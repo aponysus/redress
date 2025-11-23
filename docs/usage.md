@@ -94,3 +94,22 @@ policy.call(
     operation="sync_account",
 )
 ```
+
+## Decorator-based retries (sync + async)
+
+The `retry` decorator wraps functions and chooses the right policy automatically based on whether the function is sync or async.
+
+```python
+from reflexio import retry, default_classifier
+from reflexio.strategies import decorrelated_jitter
+
+@retry(classifier=default_classifier, strategy=decorrelated_jitter(max_s=5.0))
+def fetch_user():
+    ...
+
+@retry(classifier=default_classifier, strategy=decorrelated_jitter(max_s=5.0))
+async def fetch_user_async():
+    ...
+```
+
+Hooks and `operation` can be set on the decorator. The `operation` defaults to the function name when omitted.
