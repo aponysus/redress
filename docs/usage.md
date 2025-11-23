@@ -103,11 +103,11 @@ The `retry` decorator wraps functions and chooses the right policy automatically
 from reflexio import retry, default_classifier
 from reflexio.strategies import decorrelated_jitter
 
-@retry(classifier=default_classifier, strategy=decorrelated_jitter(max_s=5.0))
+@retry  # defaults to default_classifier + decorrelated_jitter(max_s=5.0)
 def fetch_user():
     ...
 
-@retry(classifier=default_classifier, strategy=decorrelated_jitter(max_s=5.0))
+@retry
 async def fetch_user_async():
     ...
 ```

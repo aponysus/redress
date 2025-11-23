@@ -4,11 +4,12 @@ import functools
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any, ParamSpec, TypeVar, cast
+from typing import Any, ParamSpec, TypeVar, cast, overload
 
+from .classify import default_classifier
 from .config import RetryConfig
 from .errors import ErrorClass
-from .strategies import StrategyFn
+from .strategies import StrategyFn, decorrelated_jitter
 
 ClassifierFn = Callable[[BaseException], ErrorClass]
 MetricHook = Callable[[str, int, float, dict[str, Any]], None]
@@ -435,9 +436,44 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
         raise RuntimeError("Retry attempts exhausted with no captured exception")
 
 
+@overload
 def retry(
+    func: None = None,
     *,
-    classifier: ClassifierFn,
+    classifier: ClassifierFn = ...,
+    strategy: StrategyFn | None = ...,
+    strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
+    deadline_s: float = ...,
+    max_attempts: int = ...,
+    max_unknown_attempts: int | None = ...,
+    per_class_max_attempts: Mapping[ErrorClass, int] | None = ...,
+    on_metric: MetricHook | None = ...,
+    on_log: LogHook | None = ...,
+    operation: str | None = ...,
+) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
+
+
+@overload
+def retry(
+    func: Callable[P, T],
+    *,
+    classifier: ClassifierFn = ...,
+    strategy: StrategyFn | None = ...,
+    strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
+    deadline_s: float = ...,
+    max_attempts: int = ...,
+    max_unknown_attempts: int | None = ...,
+    per_class_max_attempts: Mapping[ErrorClass, int] | None = ...,
+    on_metric: MetricHook | None = ...,
+    on_log: LogHook | None = ...,
+    operation: str | None = ...,
+) -> Callable[P, T]: ...
+
+
+def retry(
+    func: Callable[P, T] | None = None,
+    *,
+    classifier: ClassifierFn = default_classifier,
     strategy: StrategyFn | None = None,
     strategies: Mapping[ErrorClass, StrategyFn] | None = None,
     deadline_s: float = 60.0,
@@ -447,7 +483,7 @@ def retry(
     on_metric: MetricHook | None = None,
     on_log: LogHook | None = None,
     operation: str | None = None,
-) -> Callable[[Callable[P, T]], Callable[P, T]]:
+) -> Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T]:
     """
     Decorator that wraps a function in a RetryPolicy (sync) or AsyncRetryPolicy (async).
 
@@ -462,11 +498,12 @@ def retry(
 
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         op_name = operation or getattr(func, "__name__", None)
+        effective_strategy = strategy or decorrelated_jitter(max_s=5.0)
 
         if asyncio.iscoroutinefunction(func):
             async_policy = AsyncRetryPolicy(
                 classifier=classifier,
-                strategy=strategy,
+                strategy=effective_strategy,
                 strategies=strategies,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
@@ -488,7 +525,7 @@ def retry(
 
         policy = RetryPolicy(
             classifier=classifier,
-            strategy=strategy,
+            strategy=effective_strategy,
             strategies=strategies,
             deadline_s=deadline_s,
             max_attempts=max_attempts,
@@ -507,6 +544,9 @@ def retry(
             return cast(T, result)
 
         return wrapper
+
+    if func is not None:
+        return decorator(func)
 
     return decorator
 

@@ -44,11 +44,16 @@ result = policy.call(flaky)
 from reflexio import retry, default_classifier
 from reflexio.strategies import decorrelated_jitter
 
+@retry  # defaults to default_classifier + decorrelated_jitter(max_s=5.0)
+def fetch_user():
+    ...
+
+# Or customize classifier/strategies
 @retry(
     classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),
+    strategy=decorrelated_jitter(max_s=3.0),
 )
-def fetch_user():
+def fetch_user_custom():
     ...
 ```
 

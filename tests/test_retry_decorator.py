@@ -78,3 +78,18 @@ def test_retry_decorator_async(monkeypatch: pytest.MonkeyPatch) -> None:
 
     success_event = next(e for e in events if e[0] == "success")
     assert success_event[3]["operation"] == "flaky_async"
+
+
+def test_retry_decorator_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    calls = {"n": 0}
+
+    @retry
+    def flaky_default() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RateLimitError("retry me")
+        return "ok"
+
+    assert flaky_default() == "ok"
+    assert calls["n"] == 2

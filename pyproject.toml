@@ -3,7 +3,7 @@ name = "reflexio"
 version = "0.2.1"
 description = "A composable retry policy framework with classification, jitter strategies, and observability hooks."
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 
 dependencies = []
 
