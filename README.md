@@ -5,6 +5,7 @@
 [![PyPI Version](https://img.shields.io/pypi/v/reflexio.svg)](https://pypi.org/project/reflexio/)
 
 
+
 Composable, low-overhead retry policies with **pluggable classification**, **per-class backoff strategies**, and **structured observability hooks**.  
 Designed for services that need predictable retry behavior and clean integration with metrics/logging.
 
@@ -166,13 +167,13 @@ policy = RetryPolicy(
 uv run pytest
 ```
 
-## Examples
+## Examples (in `docs/snippets/`)
 
-- Sync httpx demo: `uv pip install httpx` then `uv run python examples/httpx_sync_retry.py`
-- Async httpx demo using `AsyncRetryPolicy`: `uv pip install httpx` then `uv run python examples/httpx_async_retry.py`
-- Async worker loop with retries: `uv run python examples/async_worker_retry.py`
-- Decorator usage (sync + async): `uv run python examples/decorator_retry.py`
-- FastAPI proxy with metrics counter: `uv pip install "fastapi[standard]" httpx` then `uv run uvicorn examples.fastapi_downstream:app --reload`
+- Sync httpx demo: `uv pip install httpx` then `uv run python docs/snippets/httpx_sync_retry.py`
+- Async httpx demo using `AsyncRetryPolicy`: `uv pip install httpx` then `uv run python docs/snippets/httpx_async_retry.py`
+- Async worker loop with retries: `uv run python docs/snippets/async_worker_retry.py`
+- Decorator usage (sync + async): `uv run python docs/snippets/decorator_retry.py`
+- FastAPI proxy with metrics counter: `uv pip install "fastapi[standard]" httpx` then `uv run uvicorn docs.snippets.fastapi_downstream:app --reload`
 
 ## Versioning
 
