@@ -1,0 +1,14 @@
+[tasks.test]
+run = "uv run python -m pytest"
+
+[tasks.typecheck]
+run = "uv run python -m mypy src"
+
+[tasks.lint]
+run = "uv run python -m ruff check src"
+
+[tasks.fmt]
+run = "uv run python -m ruff format src"
+
+[tasks.all]
+depends = ["fmt", "lint", "typecheck", "test"]

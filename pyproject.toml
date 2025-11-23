@@ -1,0 +1,72 @@
+[project]
+name = "reflexio"
+version = "0.1.0"
+description = "A composable retry policy framework with classification, jitter strategies, and observability hooks."
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = []
+
+# ---------------------
+# Optional dependencies
+# ---------------------
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.1",
+    "pytest-cov>=7.0.0",
+    "mypy>=1.10.0",
+    "ruff>=0.6.0",
+    "types-setuptools",
+]
+
+[tool.uv]
+# uv will install dev dependencies with:
+#   uv pip install -e .[dev]
+#
+
+[tool.pytest.ini_options]
+addopts = [
+    "--strict-markers",
+    "--disable-warnings",
+    "--cov=reflexio",
+    "--cov-report=term",
+    "--cov-report=xml",
+]
+testpaths = ["src/tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["reflexio"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+
+[tool.mypy]
+python_version = "3.12"
+check_untyped_defs = true
+disallow_untyped_defs = true
+strict_optional = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_return_any = true
+exclude = ["tests/"]  # tests don't need strict typing
+
+[tool.ruff]
+line-length = 100
+exclude = ["build/", "dist/", ".venv/", "README.md"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B"]
+ignore = [
+    "E501", # handled by formatter
+]
+
+[tool.ruff.format]
+quote-style = "double"
+line-ending = "lf"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
