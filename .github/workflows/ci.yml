@@ -28,10 +28,10 @@ jobs:
         run: uv pip install -e '.[dev]'
 
       - name: Run format check
-        run: uv run python -m ruff format --check src src/tests docs
+        run: uv run python -m ruff format --check src tests docs
 
       - name: Run lint
-        run: uv run python -m ruff check src src/tests docs
+        run: uv run python -m ruff check src tests docs
 
       - name: Run typecheck
         run: uv run python -m mypy src
