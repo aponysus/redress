@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import functools
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from datetime import UTC, datetime, timedelta
-from typing import Any, TypeVar
+from typing import Any, ParamSpec, TypeVar, overload
 
 from .config import RetryConfig
 from .errors import ErrorClass
@@ -14,6 +15,7 @@ from .strategies import StrategyFn
 ClassifierFn = Callable[[BaseException], ErrorClass]
 MetricHook = Callable[[str, int, float, dict[str, Any]], None]
 LogHook = Callable[[str, dict[str, Any]], None]
+P = ParamSpec("P")
 T = TypeVar("T")
 
 
@@ -433,6 +435,114 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
             raise state.last_exc
 
         raise RuntimeError("Retry attempts exhausted with no captured exception")
+
+
+@overload
+def retry(
+    *,
+    classifier: ClassifierFn,
+    strategy: StrategyFn | None = ...,
+    strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
+    deadline_s: float = ...,
+    max_attempts: int = ...,
+    max_unknown_attempts: int | None = ...,
+    per_class_max_attempts: Mapping[ErrorClass, int] | None = ...,
+    on_metric: MetricHook | None = ...,
+    on_log: LogHook | None = ...,
+    operation: str | None = ...,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    ...
+
+
+@overload
+def retry(
+    *,
+    classifier: ClassifierFn,
+    strategy: StrategyFn | None = ...,
+    strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
+    deadline_s: float = ...,
+    max_attempts: int = ...,
+    max_unknown_attempts: int | None = ...,
+    per_class_max_attempts: Mapping[ErrorClass, int] | None = ...,
+    on_metric: MetricHook | None = ...,
+    on_log: LogHook | None = ...,
+    operation: str | None = ...,
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
+    ...
+
+
+def retry(
+    *,
+    classifier: ClassifierFn,
+    strategy: StrategyFn | None = None,
+    strategies: Mapping[ErrorClass, StrategyFn] | None = None,
+    deadline_s: float = 60.0,
+    max_attempts: int = 6,
+    max_unknown_attempts: int | None = 2,
+    per_class_max_attempts: Mapping[ErrorClass, int] | None = None,
+    on_metric: MetricHook | None = None,
+    on_log: LogHook | None = None,
+    operation: str | None = None,
+) -> Callable[[Callable[P, T]], Callable[P, T]]:
+    """
+    Decorator that wraps a function in a RetryPolicy (sync) or AsyncRetryPolicy (async).
+
+    Usage
+    -----
+        @retry(classifier=default_classifier, strategy=decorrelated_jitter())
+        def fetch_user() -> str:
+            ...
+
+    Parameters mirror RetryPolicy/AsyncRetryPolicy. Hooks/operation can be set up-front.
+    """
+
+    def decorator(func: Callable[P, T]) -> Callable[P, T]:
+        op_name = operation or getattr(func, "__name__", None)
+
+        if asyncio.iscoroutinefunction(func):
+            async_policy = AsyncRetryPolicy(
+                classifier=classifier,
+                strategy=strategy,
+                strategies=strategies,
+                deadline_s=deadline_s,
+                max_attempts=max_attempts,
+                max_unknown_attempts=max_unknown_attempts,
+                per_class_max_attempts=per_class_max_attempts,
+            )
+
+            @functools.wraps(func)
+            async def async_wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+                return await async_policy.call(
+                    lambda: func(*args, **kwargs),
+                    on_metric=on_metric,
+                    on_log=on_log,
+                    operation=op_name,
+                )
+
+            return async_wrapper  # type: ignore[return-value]
+
+        policy = RetryPolicy(
+            classifier=classifier,
+            strategy=strategy,
+            strategies=strategies,
+            deadline_s=deadline_s,
+            max_attempts=max_attempts,
+            max_unknown_attempts=max_unknown_attempts,
+            per_class_max_attempts=per_class_max_attempts,
+        )
+
+        @functools.wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
+            return policy.call(
+                lambda: func(*args, **kwargs),
+                on_metric=on_metric,
+                on_log=on_log,
+                operation=op_name,
+            )
+
+        return wrapper
+
+    return decorator
 
 
 # ---- Examples -----------------------------------------------------------------

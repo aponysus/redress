@@ -2,6 +2,8 @@
 
 ![CI](https://github.com/aponysus/reflexio/actions/workflows/ci.yml/badge.svg)
 [![codecov](https://codecov.io/gh/aponysus/reflexio/branch/main/graph/badge.svg?token=OaQIP7hzAE)](https://codecov.io/gh/aponysus/reflexio)
+[![PyPI Version](https://img.shields.io/pypi/v/reflexio.svg)](https://pypi.org/project/reflexio/)
+
 
 Composable, low-overhead retry policies with **pluggable classification**, **per-class backoff strategies**, and **structured observability hooks**.  
 Designed for services that need predictable retry behavior and clean integration with metrics/logging.
@@ -31,6 +33,20 @@ def flaky():
     ...
 
 result = policy.call(flaky)
+```
+
+### Decorator quick start
+
+```python
+from reflexio import retry, default_classifier
+from reflexio.strategies import decorrelated_jitter
+
+@retry(
+    classifier=default_classifier,
+    strategy=decorrelated_jitter(max_s=5.0),
+)
+def fetch_user():
+    ...
 ```
 
 ### Async quick start
@@ -155,6 +171,7 @@ uv run pytest
 - Sync httpx demo: `uv pip install httpx` then `uv run python examples/httpx_sync_retry.py`
 - Async httpx demo using `AsyncRetryPolicy`: `uv pip install httpx` then `uv run python examples/httpx_async_retry.py`
 - Async worker loop with retries: `uv run python examples/async_worker_retry.py`
+- Decorator usage (sync + async): `uv run python examples/decorator_retry.py`
 - FastAPI proxy with metrics counter: `uv pip install "fastapi[standard]" httpx` then `uv run uvicorn examples.fastapi_downstream:app --reload`
 
 ## Versioning

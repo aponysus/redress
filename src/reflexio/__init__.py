@@ -1,6 +1,6 @@
 from .classify import default_classifier
 from .config import RetryConfig
-from .policy import AsyncRetryPolicy, RetryPolicy
+from .policy import AsyncRetryPolicy, RetryPolicy, retry
 from .strategies import decorrelated_jitter, equal_jitter, token_backoff
 
 __all__ = [
@@ -11,4 +11,5 @@ __all__ = [
     "equal_jitter",
     "token_backoff",
     "default_classifier",
+    "retry",
 ]
