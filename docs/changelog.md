@@ -2,7 +2,15 @@
 
 See project root `CHANGELOG.md` for full details.
 
-## [0.2.0] - 2025-12-01
+## [0.2.2] - 2025-11-24
+### Added
+- bugfixes and docs updates
+
+## [0.2.1] - 2025-11-24
+### Added
+- bugfixes and docs updates
+
+## [0.2.0] - 2025-11-23
 ### Added
 - `retry` decorator for wrapping sync and async callables with RetryPolicy/AsyncRetryPolicy.
 - Decorator usage example script and README updates.
