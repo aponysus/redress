@@ -41,12 +41,56 @@
 - Snippet: `docs/snippets/fastapi_downstream.py`
 - Wraps a downstream call with retries and exposes `/metrics` counters.
 - Run: `uv pip install "fastapi[standard]" httpx` then `uv run uvicorn docs.snippets.fastapi_downstream:app --reload`.
+- Shape:
+
+```python
+from fastapi import FastAPI, HTTPException
+from reflexio import RetryPolicy, default_classifier
+from reflexio.strategies import decorrelated_jitter
+
+app = FastAPI()
+policy = RetryPolicy(classifier=default_classifier, strategy=decorrelated_jitter(max_s=2.0))
+
+@app.get("/proxy")
+def proxy():
+    def _call():
+        resp = httpx.get("https://httpbin.org/status/500", timeout=3.0)
+        resp.raise_for_status()
+        return resp.text
+    try:
+        return {"body": policy.call(_call, operation="proxy_downstream")}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+```
 
 ## FastAPI middleware with per-endpoint policies
 
 - Snippet: `docs/snippets/fastapi_middleware.py`
 - Middleware applies a retry policy to requests; includes a proxy endpoint.
 - Run: `uv pip install "fastapi[standard]" httpx` then `uv run uvicorn docs.snippets.fastapi_middleware:app --reload`.
+- Shape:
+
+```python
+from fastapi import FastAPI, Request, Response
+from reflexio import RetryPolicy
+from reflexio.extras import http_classifier
+from reflexio.strategies import decorrelated_jitter
+
+app = FastAPI()
+
+def make_policy(op: str) -> RetryPolicy:
+    return RetryPolicy(
+        classifier=http_classifier,
+        strategy=decorrelated_jitter(max_s=2.0),
+        max_attempts=4,
+        deadline_s=8.0,
+    )
+
+@app.middleware("http")
+async def retry_middleware(request: Request, call_next) -> Response:
+    policy = make_policy(request.url.path)
+    return await policy.call(lambda: call_next(request), operation=request.url.path)
+```
 
 ## Benchmarks (pyperf)
 

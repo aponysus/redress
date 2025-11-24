@@ -15,6 +15,11 @@ theme:
     - scheme: slate
       primary: indigo
       accent: deep purple
+markdown_extensions:
+  - admonition
+  - codehilite
+  - pymdownx.highlight
+  - pymdownx.superfences
 nav:
   - Overview: index.md
   - Getting started: getting-started.md
