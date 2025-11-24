@@ -29,3 +29,9 @@
 - Snippet: `docs/snippets/fastapi_downstream.py`
 - Wraps a downstream call with retries and exposes `/metrics` counters.
 - Run: `uv pip install "fastapi[standard]" httpx` then `uv run uvicorn docs.snippets.fastapi_downstream:app --reload`.
+
+## Benchmarks (pyperf)
+
+- Snippet: `docs/snippets/bench_retry.py`
+- Measures bare sync retry overhead with pyperf runners.
+- Run: `uv pip install .[dev]` then `uv run python docs/snippets/bench_retry.py`.

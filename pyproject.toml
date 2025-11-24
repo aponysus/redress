@@ -18,6 +18,7 @@ dev = [
     "mypy>=1.10.0",
     "ruff>=0.6.0",
     "types-setuptools",
+    "pyperf>=2.7.0",
 ]
 docs = [
     "mkdocs>=1.6.0",

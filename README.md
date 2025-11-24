@@ -187,6 +187,7 @@ uv run pytest
 - Decorator usage (sync + async): `uv run python docs/snippets/decorator_retry.py`
 - FastAPI proxy with metrics counter: `uv pip install "fastapi[standard]" httpx` then `uv run uvicorn docs.snippets.fastapi_downstream:app --reload`
 - PyODBC + SQLSTATE classification example: `uv pip install pyodbc` then `uv run python docs/snippets/pyodbc_retry.py`
+- Pyperf microbenchmarks: `uv pip install .[dev]` then `uv run python docs/snippets/bench_retry.py`
 
 ## Docs site
 

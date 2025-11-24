@@ -71,6 +71,57 @@ assert any(e[0] == "retry" for e in events)
 
 You can use the same shape for log hooks; ensure tests avoid networked backends and use local spies instead.
 
+## Tag cardinality guidance
+
+- Keep tags low-cardinality (`class`, `operation`, `err`); avoid per-user/request IDs.
+- For HTTP, prefer status classes (e.g., map 5xx) via `http_classifier` instead of embedding URLs.
+- For DB, map SQLSTATE classes via `sqlstate_classifier` and avoid query text.
+
+## Structured logging example
+
+```python
+import structlog
+from reflexio import retry
+
+logger = structlog.get_logger()
+
+def log_hook(event: str, fields: dict[str, object]) -> None:
+    logger.info("retry_event", event=event, **fields)
+
+@retry(on_log=log_hook, operation="sync_account")
+def do_work():
+    ...
+```
+
+## OTEL counter example (pseudo-code)
+
+```python
+from reflexio.metrics import otel_metric_hook
+
+meter = ...  # your OTEL meter
+metric_hook = otel_metric_hook(meter, name="reflexio_events")
+
+@retry(on_metric=metric_hook, operation="fetch_user")
+def do_work():
+    ...
+```
+
+## Prometheus exporter sample
+
+```python
+from prometheus_client import Counter, start_http_server
+from reflexio.metrics import prometheus_metric_hook
+from reflexio import retry
+
+counter = Counter("reflexio_events", "Retry events", ["event", "class", "operation", "err"])
+metric_hook = prometheus_metric_hook(counter)
+start_http_server(8000)
+
+@retry(on_metric=metric_hook, operation="sync_user")
+def do_work():
+    ...
+```
+
 ## Alerting ideas
 
 - Rising `retry` or `max_attempts_exceeded` for `RATE_LIMIT`/`SERVER_ERROR` -> backoff/circuit breaker tuning.
