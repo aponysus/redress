@@ -1,4 +1,4 @@
-# Reflexio
+# reflexio
 
 Composable retry policies with pluggable classifiers, per-class backoff, and structured hooks.
 
