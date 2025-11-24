@@ -1,4 +1,0 @@
-# file: /home/aponysus/projects/reflexio/.venv/bin/pytest
-# hypothesis_version: 6.148.2
-
-['-script.pyw', '.exe', '__main__']

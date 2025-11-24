@@ -1,4 +1,0 @@
-# file: /home/aponysus/projects/reflexio/src/reflexio/policy.py
-# hypothesis_version: 6.148.2
-
-[0.0, 1.0, 5.0, 10.0, 20.0, 30.0, 60.0, 120.0, 'AsyncRetryPolicy', 'P', 'Result:', 'RetryPolicy', 'T', '__name__', 'attempt', 'class', 'deadline_exceeded', 'err', 'example_operation', 'ok', 'operation', 'permanent_fail', 'retry', 'sleep_s', 'success']

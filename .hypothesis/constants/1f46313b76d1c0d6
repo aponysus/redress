@@ -1,4 +1,0 @@
-# file: /home/aponysus/projects/reflexio/src/reflexio/classify.py
-# hypothesis_version: 6.148.2
-
-[400, 401, 403, 404, 408, 409, 422, 429, 500, 600, 'auth', 'code', 'connection', 'credential', 'forbid', 'permission', 'status', 'timeout', 'unauthoriz']
