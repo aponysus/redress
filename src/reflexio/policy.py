@@ -3,6 +3,7 @@ import collections
 import functools
 import time
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any, ParamSpec, TypeVar, cast, overload
 
@@ -153,6 +154,50 @@ class _RetryState:
         self.prev_sleep = sleep_s
         self.emit("retry", attempt, sleep_s, klass, exc)
         return sleep_s
+
+
+@dataclass
+class _RetryContext:
+    policy: "RetryPolicy"
+    on_metric: MetricHook | None
+    on_log: LogHook | None
+    operation: str | None
+
+    def __enter__(self) -> Callable[[Callable[P, T], P.args, P.kwargs], T]:
+        return self.call
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        return False
+
+    def call(self, func: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
+        return self.policy.call(
+            lambda: func(*args, **kwargs),
+            on_metric=self.on_metric,
+            on_log=self.on_log,
+            operation=self.operation,
+        )
+
+
+@dataclass
+class _AsyncRetryContext:
+    policy: "AsyncRetryPolicy"
+    on_metric: MetricHook | None
+    on_log: LogHook | None
+    operation: str | None
+
+    async def __aenter__(self) -> Callable[[Callable[P, Awaitable[T]], P.args, P.kwargs], Awaitable[T]]:
+        return self.call
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> bool:
+        return False
+
+    async def call(self, func: Callable[P, Awaitable[T]], *args: P.args, **kwargs: P.kwargs) -> T:
+        return await self.policy.call(
+            lambda: func(*args, **kwargs),
+            on_metric=self.on_metric,
+            on_log=self.on_log,
+            operation=self.operation,
+        )
 
 
 class RetryPolicy(_BaseRetryPolicy):
@@ -361,6 +406,23 @@ class RetryPolicy(_BaseRetryPolicy):
         # Extremely unlikely: no exception and no result.
         raise RuntimeError("Retry attempts exhausted with no captured exception")
 
+    def context(
+        self,
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> _RetryContext:
+        """
+        Context manager that binds hooks/operation for multiple calls.
+
+        Usage:
+            with policy.context(on_metric=hook, operation="batch") as retry:
+                retry(fn1)
+                retry(fn2, arg1, arg2)
+        """
+        return _RetryContext(self, on_metric, on_log, operation)
+
 
 class AsyncRetryPolicy(_BaseRetryPolicy):
     """
@@ -434,6 +496,23 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
             raise state.last_exc
 
         raise RuntimeError("Retry attempts exhausted with no captured exception")
+
+    def context(
+        self,
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> _AsyncRetryContext:
+        """
+        Async context manager that binds hooks/operation for multiple calls.
+
+        Usage:
+            async with policy.context(on_metric=hook, operation="batch") as retry:
+                await retry(async_fn1)
+                await retry(async_fn2, arg)
+        """
+        return _AsyncRetryContext(self, on_metric, on_log, operation)
 
 
 @overload

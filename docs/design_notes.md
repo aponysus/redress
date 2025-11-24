@@ -6,3 +6,5 @@
 - **Best-effort hooks:** Metric/log hooks are isolated—exceptions are swallowed so retries never break due to observability failures.
 - **Deterministic jitter bounds:** Built-in strategies clamp to configured maxima; property-based tests assert bounds.
 - **Sync/async symmetry:** `RetryPolicy` and `AsyncRetryPolicy` mirror semantics; `@retry` decorator auto-picks the right one.
+- **Context reuse:** Context managers bind hooks/operations once for batches; avoid repeating kwargs on every call.
+- **Unknowns:** `max_unknown_attempts` prevents unbounded retries on unclassified errors; deadline remains a global guardrail.

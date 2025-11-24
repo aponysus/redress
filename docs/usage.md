@@ -114,6 +114,32 @@ async def fetch_user_async():
 
 Hooks and `operation` can be set on the decorator. The `operation` defaults to the function name when omitted.
 
+## Context managers for repeated calls
+
+You can bind hooks/operation once and reuse:
+
+```python
+policy = RetryPolicy(..., classifier=default_classifier, strategy=decorrelated_jitter())
+
+with policy.context(operation="batch") as retry:
+    retry(do_thing)
+    retry(do_other, arg1, arg2)
+```
+
+Async variant:
+
+```python
+async with async_policy.context(operation="batch") as retry:
+    await retry(do_async_work)
+```
+
+## Helper classifiers
+
+`reflexio.extras` provides domain-oriented classifiers:
+
+- `http_classifier` – maps HTTP status codes (e.g., 429→RATE_LIMIT, 500→SERVER_ERROR, 408→TRANSIENT).
+- `sqlstate_classifier` – maps SQLSTATE codes (e.g., 40001/40P01→CONCURRENCY, HYT00/08xxx→TRANSIENT, 28xxx→AUTH).
+
 ## PyODBC classification example
 
 `reflexio` stays dependency-free, so database-specific classifiers live in docs. See `docs/snippets/pyodbc_classifier.py` for a SQLSTATE-based mapper.

@@ -20,7 +20,7 @@
 
 ## PyODBC + SQLSTATE classifier
 
-- Snippet: `docs/snippets/pyodbc_classifier.py` provides a SQLSTATE→ErrorClass mapper.
+- Snippet: `docs/snippets/pyodbc_classifier.py` provides a SQLSTATE→ErrorClass mapper (also available as `sqlstate_classifier` in `reflexio.extras`).
 - Snippet: `docs/snippets/pyodbc_retry.py` shows batched row fetch under retry.
 - Run: `uv pip install pyodbc` and set `PYODBC_CONN_STR`, then `uv run python docs/snippets/pyodbc_retry.py`.
 
