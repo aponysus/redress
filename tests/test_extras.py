@@ -29,3 +29,21 @@ def test_sqlstate_classifier_mappings() -> None:
     assert sqlstate_classifier(SqlError("08S01")) is ErrorClass.TRANSIENT
     assert sqlstate_classifier(SqlError("28000")) is ErrorClass.AUTH
     assert sqlstate_classifier(SqlError("42000")) is ErrorClass.PERMANENT
+
+
+def test_http_classifier_from_args() -> None:
+    class HttpError(Exception):
+        pass
+
+    err = HttpError(0)
+    err.args = (429,)  # type: ignore[assignment]
+    assert http_classifier(err) is ErrorClass.RATE_LIMIT
+
+
+def test_sqlstate_classifier_from_string_args() -> None:
+    class SqlError(Exception):
+        pass
+
+    err = SqlError("[HYT00]")
+    err.args = ("[HYT00] timeout",)  # type: ignore[assignment]
+    assert sqlstate_classifier(err) is ErrorClass.TRANSIENT

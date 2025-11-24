@@ -1,6 +1,5 @@
 """
 Optional helper classifiers for common domains (HTTP status, SQLSTATE).
-
 Dependency-free: these functions inspect attributes/args without importing client libs.
 """
 
