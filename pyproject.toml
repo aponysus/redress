@@ -45,7 +45,7 @@ branch = true
 source = ["reflexio"]
 
 [tool.coverage.report]
-fail_under = 70
+fail_under = 85
 show_missing = true
 
 [tool.mypy]

@@ -47,3 +47,19 @@ def test_sqlstate_classifier_from_string_args() -> None:
     err = SqlError("[HYT00]")
     err.args = ("[HYT00] timeout",)  # type: ignore[assignment]
     assert sqlstate_classifier(err) is ErrorClass.TRANSIENT
+
+
+def test_http_classifier_unknown_falls_back() -> None:
+    class HttpError(Exception):
+        def __init__(self) -> None:
+            self.status_code = 777
+
+    assert http_classifier(HttpError()) is ErrorClass.UNKNOWN
+
+
+def test_sqlstate_classifier_unknown_falls_back() -> None:
+    class SqlError(Exception):
+        def __init__(self) -> None:
+            self.sqlstate = "99999"
+
+    assert sqlstate_classifier(SqlError()) is ErrorClass.UNKNOWN
