@@ -12,6 +12,7 @@ The core problem: **naive retries treat all failures the same**. Real systems do
 
 This post walks through how I ended up designing **reflexio** the way I did: error classification, per-class strategies, and an observability hook instead of a big generic “retry until it works” hammer.
 
+---
 
 # 1. A simple retry isn’t enough
 

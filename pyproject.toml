@@ -27,6 +27,9 @@ docs = [
     "mkdocs-material>=9.5.0",
 ]
 
+[project.scripts]
+reflexio = "reflexio.cli:main"
+
 [tool.uv]
 # uv will install dev dependencies with:
 #   uv pip install -e .[dev]
@@ -76,6 +79,15 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 line-ending = "lf"
+
+[tool.hatch.build]
+packages = ["src/reflexio"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/reflexio/py.typed" = "reflexio/py.typed"
+
+[tool.hatch.build.targets.sdist.force-include]
+"src/reflexio/py.typed" = "reflexio/py.typed"
 
 [build-system]
 requires = ["hatchling"]

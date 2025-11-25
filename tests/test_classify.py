@@ -2,7 +2,13 @@
 
 
 from reflexio.classify import default_classifier
-from reflexio.errors import ErrorClass
+from reflexio.errors import (
+    ConcurrencyError,
+    ErrorClass,
+    PermanentError,
+    RateLimitError,
+    ServerError,
+)
 
 
 def test_default_classifier_auth_code_401() -> None:
@@ -79,6 +85,13 @@ def test_default_classifier_5xx_is_server_error() -> None:
     class ServerError(Exception):
         status = 502
 
+    assert default_classifier(ServerError()) is ErrorClass.SERVER_ERROR
+
+
+def test_default_classifier_explicit_reflexio_types() -> None:
+    assert default_classifier(PermanentError()) is ErrorClass.PERMANENT
+    assert default_classifier(RateLimitError()) is ErrorClass.RATE_LIMIT
+    assert default_classifier(ConcurrencyError()) is ErrorClass.CONCURRENCY
     assert default_classifier(ServerError()) is ErrorClass.SERVER_ERROR
 
 

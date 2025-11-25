@@ -186,6 +186,46 @@ policy = RetryPolicy(
 uv run pytest
 ```
 
+## CLI
+
+- Lint a retry config or policy to catch obvious misconfigurations:
+
+```python
+# app_retry.py
+from reflexio import RetryConfig
+from reflexio.strategies import decorrelated_jitter
+
+cfg = RetryConfig(
+    default_strategy=decorrelated_jitter(max_s=1.5),
+    max_attempts=5,
+)
+```
+
+Then from the repo root or any env where app_retry is on PYTHONPATH:
+```bash
+reflexio doctor app_retry:cfg
+# Show a normalized snapshot of active values:
+reflexio doctor app_retry:cfg --show
+```
+
+`doctor` accepts `module:attribute` pointing to a `RetryConfig`, `RetryPolicy`, or `AsyncRetryPolicy`. The attribute defaults to `config` if omitted (e.g., `myapp.settings` will look for `settings:config`).
+
+Example `--show` output:
+
+```
+Config snapshot:
+  source: app_retry:cfg
+  deadline_s: 60.0
+  max_attempts: 5
+  max_unknown_attempts: 2
+  default_strategy: reflexio.strategies.decorrelated_jitter.<locals>.f
+  class_strategies:
+    (none)
+  per_class_max_attempts:
+    (none)
+OK: 'app_retry:cfg' passed config checks.
+```
+
 ## Examples (in `docs/snippets/`)
 
 - Sync httpx demo: `uv pip install httpx` then `uv run python docs/snippets/httpx_sync_retry.py`
