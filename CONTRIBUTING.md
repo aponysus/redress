@@ -23,7 +23,13 @@ We follow Semantic Versioning (`MAJOR.MINOR.PATCH`):
    uv pip install -e .[dev]
    ```
 
-3. Run the quality checks:
+3. (Optional) Install pre-commit hooks:
+
+   ```bash
+   uv run pre-commit install
+   ```
+
+4. Run the quality checks:
 
    ```bash
    # Formatting
@@ -57,6 +63,12 @@ uv run ruff format --check src tests docs
 uv run ruff check src tests docs
 uv run mypy src
 uv run pytest
+```
+
+You can also run the same checks via pre-commit:
+
+```bash
+uv run pre-commit run --all-files
 ```
 
 All of these should pass before releasing.

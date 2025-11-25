@@ -17,6 +17,8 @@ dev = [
     "hypothesis>=6.99.0",
     "mypy>=1.10.0",
     "ruff>=0.6.0",
+    "black>=24.8.0",
+    "pre-commit>=3.7.0",
     "types-setuptools",
     "pyperf>=2.7.0",
 ]
@@ -58,6 +60,8 @@ warn_redundant_casts = true
 warn_unused_configs = true
 warn_return_any = true
 exclude = ["tests/"]  # tests don't need strict typing
+mypy_path = ["src"]
+explicit_package_bases = true
 
 [tool.ruff]
 line-length = 100

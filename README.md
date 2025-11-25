@@ -3,6 +3,8 @@
 ![CI](https://github.com/aponysus/reflexio/actions/workflows/ci.yml/badge.svg)
 [![codecov](https://codecov.io/gh/aponysus/reflexio/branch/main/graph/badge.svg?token=OaQIP7hzAE)](https://codecov.io/gh/aponysus/reflexio)
 [![PyPI Version](https://img.shields.io/pypi/v/reflexio.svg)](https://pypi.org/project/reflexio/)
+[![Docs](https://img.shields.io/github/actions/workflow/status/aponysus/reflexio/docs.yml?label=docs)](https://aponysus.github.io/reflexio/)
+[![Bench](https://img.shields.io/github/actions/workflow/status/aponysus/reflexio/ci.yml?label=bench)](https://github.com/aponysus/reflexio/actions/workflows/ci.yml)
 
 
 
