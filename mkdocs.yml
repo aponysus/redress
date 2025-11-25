@@ -22,6 +22,7 @@ markdown_extensions:
   - pymdownx.superfences
 nav:
   - Overview: index.md
+  - Why Reflexio: blog/why-reflexio.md
   - Getting started: getting-started.md
   - Concepts:
       - Error classes & classifiers: concepts/error-classes.md
