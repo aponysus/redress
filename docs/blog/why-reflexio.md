@@ -247,5 +247,6 @@ retry storms, hammering rate-limited APIs, and inconsistency across services.
 
 If you want to explore more:
 
-- GitHub: https://github.com/aponysus/reflexio
-- Docs: https://aponysus.github.io/reflexio/
+- GitHub: [https://github.com/aponysus/reflexio](https://github.com/aponysus/reflexio)
+- Docs: [https://aponysus.github.io/reflexio/](https://aponysus.github.io/reflexio/)
+- PyPI: [https://pypi.org/project/reflexio/](https://pypi.org/project/reflexio/)
