@@ -8,6 +8,8 @@ on:
 
 jobs:
   build-and-publish:
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +24,13 @@ jobs:
           python -m pip install build
       - name: Build sdist/wheel
         run: python -m build
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          allow_updates: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
