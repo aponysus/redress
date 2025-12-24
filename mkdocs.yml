@@ -29,6 +29,7 @@ nav:
       - Retry strategies: concepts/strategies.md
       - Policies & decorators: concepts/policies-decorators.md
       - Observability: observability.md
+      - Safety and resilience: safety-resilience.md
       - Design notes: design_notes.md
   - Usage: usage.md
   - Examples: examples/index.md
