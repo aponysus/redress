@@ -1,11 +1,31 @@
 [project]
 name = "redress"
-version = "0.2.2"
+version = "1.0.0"
 description = "A composable retry policy framework with classification, jitter strategies, and observability hooks."
 readme = "README.md"
 requires-python = ">=3.11"
+license = { file = "LICENSE" }
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Typing :: Typed",
+]
 
 dependencies = []
+
+[project.urls]
+Homepage = "https://aponysus.github.io/redress/"
+Documentation = "https://aponysus.github.io/redress/"
+Source = "https://github.com/aponysus/redress"
+Issues = "https://github.com/aponysus/redress/issues"
 
 # ---------------------
 # Optional dependencies

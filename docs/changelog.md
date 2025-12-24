@@ -1,6 +1,10 @@
 # Changelog
 
-See project root `CHANGELOG.md` for full details.
+Release notes are maintained here.
+
+## [1.0.0] - 2025-12-24
+### Added
+- 1.0 release and project rename to `redress`.
 
 ## [0.2.2] - 2025-11-24
 ### Added

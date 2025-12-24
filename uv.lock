@@ -801,7 +801,7 @@ wheels = [
 
 [[package]]
 name = "redress"
-version = "0.2.2"
+version = "1.0.0"
 source = { editable = "." }
 
 [package.optional-dependencies]

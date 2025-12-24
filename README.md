@@ -124,6 +124,12 @@ TRANSIENT
 UNKNOWN
 ```
 
+Redress intentionally keeps `ErrorClass` small and fixed. The goal is semantic
+classification ("rate limit" vs. "server error") rather than mechanical mapping to
+every exception type. If you need finer-grained behavior, use separate policies per
+use case. Future versions may add optional classification context (for example,
+Retry-After hints) without expanding the class set.
+
 Classification rules:
 
 - Explicit redress error types  
