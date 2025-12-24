@@ -1,5 +1,5 @@
 """
-Synchronous httpx example demonstrating reflexio usage.
+Synchronous httpx example demonstrating redress usage.
 
 Run with:
     uv run python docs/snippets/httpx_sync_retry.py
@@ -10,9 +10,9 @@ from typing import Any
 
 import httpx
 
-from reflexio import RetryPolicy, default_classifier
-from reflexio.errors import ErrorClass
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy, default_classifier
+from redress.errors import ErrorClass
+from redress.strategies import decorrelated_jitter
 
 
 def log_metric(event: str, attempt: int, sleep_s: float, tags: dict[str, Any]) -> None:

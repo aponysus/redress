@@ -1,7 +1,7 @@
 # tests/test_extras.py
 
-from reflexio.errors import ErrorClass
-from reflexio.extras import http_classifier, sqlstate_classifier
+from redress.errors import ErrorClass
+from redress.extras import http_classifier, sqlstate_classifier
 
 
 def test_http_classifier_mappings() -> None:

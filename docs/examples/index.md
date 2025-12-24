@@ -32,7 +32,7 @@
 
 ## PyODBC + SQLSTATE classifier
 
-- Snippet: `docs/snippets/pyodbc_classifier.py` provides a SQLSTATE→ErrorClass mapper (also available as `sqlstate_classifier` in `reflexio.extras`).
+- Snippet: `docs/snippets/pyodbc_classifier.py` provides a SQLSTATE→ErrorClass mapper (also available as `sqlstate_classifier` in `redress.extras`).
 - Snippet: `docs/snippets/pyodbc_retry.py` shows batched row fetch under retry.
 - Run: `uv pip install pyodbc` and set `PYODBC_CONN_STR`, then `uv run python docs/snippets/pyodbc_retry.py`.
 
@@ -45,8 +45,8 @@
 
 ```python
 from fastapi import FastAPI, HTTPException
-from reflexio import RetryPolicy, default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
 
 app = FastAPI()
 policy = RetryPolicy(classifier=default_classifier, strategy=decorrelated_jitter(max_s=2.0))
@@ -72,9 +72,9 @@ def proxy():
 
 ```python
 from fastapi import FastAPI, Request, Response
-from reflexio import RetryPolicy
-from reflexio.extras import http_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy
+from redress.extras import http_classifier
+from redress.strategies import decorrelated_jitter
 
 app = FastAPI()
 

@@ -32,4 +32,4 @@
 ## Metrics helpers
 
 - `prometheus_metric_hook(counter)`
-- `otel_metric_hook(meter, name="reflexio_attempts")`
+- `otel_metric_hook(meter, name="redress_attempts")`

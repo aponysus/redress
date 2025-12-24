@@ -11,9 +11,9 @@ from __future__ import annotations
 import httpx
 from fastapi import FastAPI, Request, Response
 
-from reflexio import RetryPolicy
-from reflexio.extras import http_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy
+from redress.extras import http_classifier
+from redress.strategies import decorrelated_jitter
 
 
 def make_policy(operation: str) -> RetryPolicy:

@@ -1,5 +1,5 @@
 """
-Pyperf microbenchmarks for reflexio retry overhead (no real sleeping).
+Pyperf microbenchmarks for redress retry overhead (no real sleeping).
 
 Usage:
     uv pip install .[dev]
@@ -8,9 +8,9 @@ Usage:
 
 import pyperf
 
-from reflexio import RetryPolicy, default_classifier
-from reflexio.errors import ErrorClass
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy, default_classifier
+from redress.errors import ErrorClass
+from redress.strategies import decorrelated_jitter
 
 
 def make_policy() -> RetryPolicy:

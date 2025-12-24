@@ -13,7 +13,7 @@ def default_classifier(err: BaseException) -> ErrorClass:
 
     Classification order (first match wins):
 
-      1. Explicit reflexio error types:
+      1. Explicit redress error types:
          - PermanentError     -> PERMANENT
          - RateLimitError     -> RATE_LIMIT
          - ConcurrencyError   -> CONCURRENCY

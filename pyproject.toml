@@ -1,5 +1,5 @@
 [project]
-name = "reflexio"
+name = "redress"
 version = "0.2.2"
 description = "A composable retry policy framework with classification, jitter strategies, and observability hooks."
 readme = "README.md"
@@ -28,7 +28,7 @@ docs = [
 ]
 
 [project.scripts]
-reflexio = "reflexio.cli:main"
+redress = "redress.cli:main"
 
 [tool.uv]
 # uv will install dev dependencies with:
@@ -39,7 +39,7 @@ reflexio = "reflexio.cli:main"
 addopts = [
     "--strict-markers",
     "--disable-warnings",
-    "--cov=reflexio",
+    "--cov=redress",
     "--cov-report=term",
     "--cov-report=xml",
 ]
@@ -47,7 +47,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["reflexio"]
+source = ["redress"]
 
 [tool.coverage.report]
 fail_under = 85
@@ -81,13 +81,13 @@ quote-style = "double"
 line-ending = "lf"
 
 [tool.hatch.build]
-packages = ["src/reflexio"]
+packages = ["src/redress"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"src/reflexio/py.typed" = "reflexio/py.typed"
+"src/redress/py.typed" = "redress/py.typed"
 
 [tool.hatch.build.targets.sdist.force-include]
-"src/reflexio/py.typed" = "reflexio/py.typed"
+"src/redress/py.typed" = "redress/py.typed"
 
 [build-system]
 requires = ["hatchling"]

@@ -3,15 +3,15 @@
 ## Installation
 
 ```bash
-uv pip install reflexio
+uv pip install redress
 # or
-pip install reflexio
+pip install redress
 ```
 
 ## Quick start (sync)
 
 ```python
-from reflexio import retry
+from redress import retry
 
 @retry  # default_classifier + decorrelated_jitter(max_s=5.0)
 def fetch_user():
@@ -21,7 +21,7 @@ def fetch_user():
 ## Quick start (async)
 
 ```python
-from reflexio import retry
+from redress import retry
 
 @retry
 async def fetch_user_async():
@@ -31,8 +31,8 @@ async def fetch_user_async():
 ## Policies directly
 
 ```python
-from reflexio import RetryPolicy, default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
 
 policy = RetryPolicy(
     classifier=default_classifier,

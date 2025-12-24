@@ -5,9 +5,9 @@ Minimal decorator-based retry examples (sync + async).
 import asyncio
 from collections.abc import Iterator
 
-from reflexio import retry
-from reflexio.classify import default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import retry
+from redress.classify import default_classifier
+from redress.strategies import decorrelated_jitter
 
 
 def _flaky_sequence() -> Iterator[int]:

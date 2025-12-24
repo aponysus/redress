@@ -1,8 +1,8 @@
-from reflexio.classify import default_classifier
-from reflexio.cli import lint_retry_config, lint_retry_policy, main
-from reflexio.config import RetryConfig
-from reflexio.policy import RetryPolicy
-from reflexio.strategies import decorrelated_jitter
+from redress.classify import default_classifier
+from redress.cli import lint_retry_config, lint_retry_policy, main
+from redress.config import RetryConfig
+from redress.policy import RetryPolicy
+from redress.strategies import decorrelated_jitter
 
 
 def test_lint_retry_config_surfaces_errors() -> None:
@@ -34,8 +34,8 @@ def test_lint_retry_policy_ok() -> None:
 def test_doctor_main_lints_importable_config(tmp_path, monkeypatch, capsys) -> None:
     module_path = tmp_path / "app_cfg.py"
     module_path.write_text(
-        "from reflexio import RetryConfig\n"
-        "from reflexio.strategies import decorrelated_jitter\n"
+        "from redress import RetryConfig\n"
+        "from redress.strategies import decorrelated_jitter\n"
         "config = RetryConfig(default_strategy=decorrelated_jitter(max_s=1.0))\n"
     )
 
@@ -102,8 +102,8 @@ def test_doctor_handles_wrong_object_type(tmp_path, monkeypatch, capsys) -> None
 def test_doctor_show_covers_class_strategies_and_limits(tmp_path, monkeypatch, capsys) -> None:
     module_path = tmp_path / "detailed_cfg.py"
     module_path.write_text(
-        "from reflexio import RetryConfig, ErrorClass\n"
-        "from reflexio.strategies import decorrelated_jitter\n"
+        "from redress import RetryConfig, ErrorClass\n"
+        "from redress.strategies import decorrelated_jitter\n"
         "config = RetryConfig(\n"
         "    default_strategy=decorrelated_jitter(max_s=1.0),\n"
         "    class_strategies={ErrorClass.RATE_LIMIT: decorrelated_jitter(max_s=2.0)},\n"

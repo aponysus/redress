@@ -6,15 +6,15 @@ from typing import Any
 
 import pytest
 
-from reflexio.classify import default_classifier
-from reflexio.config import RetryConfig
-from reflexio.errors import (
+from redress.classify import default_classifier
+from redress.config import RetryConfig
+from redress.errors import (
     ErrorClass,
     PermanentError,
     RateLimitError,
 )
-from reflexio.policy import MetricHook, RetryPolicy
-from reflexio.strategies import decorrelated_jitter
+from redress.policy import MetricHook, RetryPolicy
+from redress.strategies import decorrelated_jitter
 
 
 class _FakeTime:
@@ -88,7 +88,7 @@ def test_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     metric_hook, events = _collect_metrics()
 
     # Ensure we don't actually sleep during test
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -128,7 +128,7 @@ def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.AUTH
@@ -167,7 +167,7 @@ def test_permission_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.PERMISSION
@@ -217,7 +217,7 @@ def test_transient_error_retries_and_uses_strategy(monkeypatch: pytest.MonkeyPat
         strategy_calls.append((attempt, klass, prev_sleep))
         return 0.0
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     # Custom classifier that forces TRANSIENT for our FakeTimeoutError
     def classifier(err: BaseException) -> ErrorClass:
@@ -266,7 +266,7 @@ def test_max_attempts_re_raises_last_exception(monkeypatch: pytest.MonkeyPatch) 
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -308,7 +308,7 @@ def test_operation_and_tags_are_emitted(monkeypatch: pytest.MonkeyPatch) -> None
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -351,7 +351,7 @@ def test_log_hook_receives_events(monkeypatch: pytest.MonkeyPatch) -> None:
     log_hook, log_events = _collect_logs()
     metric_hook, _ = _collect_metrics()
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -401,7 +401,7 @@ def test_hooks_are_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
     def noisy_log(event: str, fields: dict[str, Any]) -> None:
         raise RuntimeError("log backend down")
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -434,7 +434,7 @@ def test_per_class_max_attempts_limits_retries(monkeypatch: pytest.MonkeyPatch) 
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.RATE_LIMIT
@@ -499,7 +499,7 @@ def test_per_class_strategy_registry(monkeypatch: pytest.MonkeyPatch) -> None:
         calls["rate_limit"] += 1
         return 0.0
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     # Classifier that always returns RATE_LIMIT
     def classifier(err: BaseException) -> ErrorClass:
@@ -565,7 +565,7 @@ def test_unknown_errors_respect_max_unknown_attempts(monkeypatch: pytest.MonkeyP
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.UNKNOWN
@@ -607,14 +607,14 @@ def test_deadline_exceeded_stops_retries(monkeypatch: pytest.MonkeyPatch) -> Non
 
     fake_time = _FakeTime()
 
-    # Monkeypatch both datetime.now(UTC) usage inside reflexio.policy and sleep
+    # Monkeypatch both datetime.now(UTC) usage inside redress.policy and sleep
     def fake_now(_: Any = None) -> datetime:
         return fake_time.now()
 
     monkeypatch.setattr(
-        "reflexio.policy.datetime", type("DT", (), {"now": staticmethod(fake_now), "UTC": UTC})
+        "redress.policy.datetime", type("DT", (), {"now": staticmethod(fake_now), "UTC": UTC})
     )
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: fake_time.advance(s))
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: fake_time.advance(s))
 
     call_count = {"n": 0}
 
@@ -658,9 +658,9 @@ def test_deadline_sleep_is_capped_and_rechecked(monkeypatch: pytest.MonkeyPatch)
     def fake_now(_: Any = None) -> datetime:
         return fake_time.now()
 
-    # Patch datetime.now(UTC) inside reflexio.policy and track sleeps.
+    # Patch datetime.now(UTC) inside redress.policy and track sleeps.
     monkeypatch.setattr(
-        "reflexio.policy.datetime", type("DT", (), {"now": staticmethod(fake_now), "UTC": UTC})
+        "redress.policy.datetime", type("DT", (), {"now": staticmethod(fake_now), "UTC": UTC})
     )
     sleep_calls: list[float] = []
 
@@ -669,7 +669,7 @@ def test_deadline_sleep_is_capped_and_rechecked(monkeypatch: pytest.MonkeyPatch)
         # Add a small overhead to ensure we cross the deadline boundary.
         fake_time.advance(seconds + 0.01)
 
-    monkeypatch.setattr("reflexio.policy.time.sleep", fake_sleep)
+    monkeypatch.setattr("redress.policy.time.sleep", fake_sleep)
 
     calls = {"n": 0}
 
@@ -728,7 +728,7 @@ def test_default_classifier_integration(monkeypatch: pytest.MonkeyPatch) -> None
     metric_hook, events = _collect_metrics()
 
     # Avoid real sleeping
-    monkeypatch.setattr("reflexio.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
 
     # Wrap a classifier spy around default_classifier
     seen_classes: list[ErrorClass] = []

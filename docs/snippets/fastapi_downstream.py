@@ -1,5 +1,5 @@
 """
-FastAPI service that proxies a downstream call with reflexio.
+FastAPI service that proxies a downstream call with redress.
 
 Run locally with:
     uv run uvicorn examples.fastapi_downstream:app --reload
@@ -8,8 +8,8 @@ Run locally with:
 import httpx
 from fastapi import FastAPI, HTTPException
 
-from reflexio import RetryPolicy, default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
 
 DOWNSTREAM_URL = "https://httpbin.org/status/500"
 

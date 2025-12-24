@@ -1,5 +1,5 @@
 """
-Requests example demonstrating reflexio usage.
+Requests example demonstrating redress usage.
 
 Run with:
     uv pip install requests
@@ -8,9 +8,9 @@ Run with:
 
 import requests
 
-from reflexio import RetryPolicy
-from reflexio.extras import http_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy
+from redress.extras import http_classifier
+from redress.strategies import decorrelated_jitter
 
 
 def log_metric(event: str, attempt: int, sleep_s: float, tags: dict[str, object]) -> None:

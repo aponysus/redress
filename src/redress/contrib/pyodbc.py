@@ -1,10 +1,10 @@
 """Optional helper for pyodbc-style exceptions.
 
-This module has no pyodbc dependency; it reuses the SQLSTATE classifier from reflexio.extras.
+This module has no pyodbc dependency; it reuses the SQLSTATE classifier from redress.extras.
 """
 
-from reflexio.errors import ErrorClass
-from reflexio.extras import sqlstate_classifier
+from redress.errors import ErrorClass
+from redress.extras import sqlstate_classifier
 
 
 def pyodbc_classifier(exc: BaseException) -> ErrorClass:

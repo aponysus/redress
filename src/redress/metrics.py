@@ -1,5 +1,5 @@
 """
-Optional observability helpers for adapting reflexio hooks to common backends.
+Optional observability helpers for adapting redress hooks to common backends.
 
 These are intentionally light and dependency-free; they accept user-provided
 objects from your observability stack and wrap them into MetricHook-compatible
@@ -41,7 +41,7 @@ def prometheus_metric_hook(counter: PrometheusCounter) -> MetricHook:
     return hook
 
 
-def otel_metric_hook(meter: OtelMeter, name: str = "reflexio_attempts") -> MetricHook:
+def otel_metric_hook(meter: OtelMeter, name: str = "redress_attempts") -> MetricHook:
     """
     Example OpenTelemetry-style hook (pseudo-code).
 

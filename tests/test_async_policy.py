@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from reflexio.classify import default_classifier
-from reflexio.errors import ErrorClass, PermanentError, RateLimitError
-from reflexio.policy import AsyncRetryPolicy, MetricHook
+from redress.classify import default_classifier
+from redress.errors import ErrorClass, PermanentError, RateLimitError
+from redress.policy import AsyncRetryPolicy, MetricHook
 
 
 def _collect_metrics() -> tuple[MetricHook, list[tuple[str, int, float, dict[str, Any]]]]:
@@ -38,7 +38,7 @@ def test_async_policy_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> 
     async def noop_sleep(_: float) -> None:
         return None
 
-    monkeypatch.setattr("reflexio.policy.asyncio.sleep", noop_sleep)
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
 
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
@@ -70,7 +70,7 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     async def noop_sleep(_: float) -> None:
         return None
 
-    monkeypatch.setattr("reflexio.policy.asyncio.sleep", noop_sleep)
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
 
     policy = AsyncRetryPolicy(
         classifier=default_classifier,

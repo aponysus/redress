@@ -1,5 +1,5 @@
 """
-AsyncPG example with reflexio retry.
+AsyncPG example with redress retry.
 
 Requires:
   uv pip install asyncpg
@@ -14,9 +14,9 @@ import os
 
 import asyncpg
 
-from reflexio import AsyncRetryPolicy
-from reflexio.extras import sqlstate_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import AsyncRetryPolicy
+from redress.extras import sqlstate_classifier
+from redress.strategies import decorrelated_jitter
 
 
 def build_policy() -> AsyncRetryPolicy:

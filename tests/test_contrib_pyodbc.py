@@ -1,7 +1,7 @@
 # tests/test_contrib_pyodbc.py
 
-from reflexio.contrib.pyodbc import pyodbc_classifier
-from reflexio.errors import ErrorClass
+from redress.contrib.pyodbc import pyodbc_classifier
+from redress.errors import ErrorClass
 
 
 def test_pyodbc_classifier_sqlstate_attr() -> None:

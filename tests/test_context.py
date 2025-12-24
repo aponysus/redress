@@ -2,9 +2,9 @@
 
 import asyncio
 
-from reflexio import AsyncRetryPolicy, RetryPolicy, default_classifier
-from reflexio.errors import ErrorClass
-from reflexio.strategies import decorrelated_jitter
+from redress import AsyncRetryPolicy, RetryPolicy, default_classifier
+from redress.errors import ErrorClass
+from redress.strategies import decorrelated_jitter
 
 
 def test_retry_policy_context() -> None:

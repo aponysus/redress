@@ -1,10 +1,10 @@
-# reflexio
+# redress
 
-![CI](https://github.com/aponysus/reflexio/actions/workflows/ci.yml/badge.svg)
-[![codecov](https://codecov.io/gh/aponysus/reflexio/branch/main/graph/badge.svg?token=OaQIP7hzAE)](https://codecov.io/gh/aponysus/reflexio)
-[![PyPI Version](https://img.shields.io/pypi/v/reflexio.svg)](https://pypi.org/project/reflexio/)
-[![Docs](https://img.shields.io/github/actions/workflow/status/aponysus/reflexio/docs.yml?label=docs)](https://aponysus.github.io/reflexio/)
-[![Bench](https://img.shields.io/github/actions/workflow/status/aponysus/reflexio/ci.yml?label=bench)](https://github.com/aponysus/reflexio/actions/workflows/ci.yml)
+![CI](https://github.com/aponysus/redress/actions/workflows/ci.yml/badge.svg)
+[![codecov](https://codecov.io/gh/aponysus/redress/branch/main/graph/badge.svg?token=OaQIP7hzAE)](https://codecov.io/gh/aponysus/redress)
+[![PyPI Version](https://img.shields.io/pypi/v/redress.svg)](https://pypi.org/project/redress/)
+[![Docs](https://img.shields.io/github/actions/workflow/status/aponysus/redress/docs.yml?label=docs)](https://aponysus.github.io/redress/)
+[![Bench](https://img.shields.io/github/actions/workflow/status/aponysus/redress/ci.yml?label=bench)](https://github.com/aponysus/redress/actions/workflows/ci.yml)
 
 
 
@@ -13,25 +13,25 @@ Designed for services that need predictable retry behavior and clean integration
 
 ## Documentation
 
-- Site: https://aponysus.github.io/reflexio/
-- Getting started: https://aponysus.github.io/reflexio/getting-started/
+- Site: https://aponysus.github.io/redress/
+- Getting started: https://aponysus.github.io/redress/getting-started/
 
 ## Installation
 
 From PyPI:
 
 ```bash
-uv pip install reflexio
+uv pip install redress
 # or
-pip install reflexio
+pip install redress
 ```
 
 ## Quick Start
 
 ```python
-from reflexio.policy import RetryPolicy
-from reflexio.classify import default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress.policy import RetryPolicy
+from redress.classify import default_classifier
+from redress.strategies import decorrelated_jitter
 
 policy = RetryPolicy(
     classifier=default_classifier,
@@ -48,8 +48,8 @@ result = policy.call(flaky)
 ### Decorator quick start
 
 ```python
-from reflexio import retry, default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import retry, default_classifier
+from redress.strategies import decorrelated_jitter
 
 @retry  # defaults to default_classifier + decorrelated_jitter(max_s=5.0)
 def fetch_user():
@@ -73,8 +73,8 @@ with policy.context(operation="batch") as retry:
 
 ```python
 import asyncio
-from reflexio import AsyncRetryPolicy, default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import AsyncRetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
 
 async_policy = AsyncRetryPolicy(
     classifier=default_classifier,
@@ -87,14 +87,14 @@ async def flaky_async():
 asyncio.run(async_policy.call(flaky_async))
 ```
 
-## Why reflexio?
+## Why redress?
 
 Most retry libraries give you either:
 
 - decorators with a fixed backoff model, or  
 - one global strategy for all errors.
 
-**reflexio** gives you something different:
+**redress** gives you something different:
 
 ### ✔ Exception → coarse error class mapping  
 Provided via `default_classifier`.
@@ -126,7 +126,7 @@ UNKNOWN
 
 Classification rules:
 
-- Explicit reflexio error types  
+- Explicit redress error types  
 - Numeric codes (`err.status` or `err.code`)  
 - Name heuristics  
 - Fallback to UNKNOWN  
@@ -192,8 +192,8 @@ uv run pytest
 
 ```python
 # app_retry.py
-from reflexio import RetryConfig
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryConfig
+from redress.strategies import decorrelated_jitter
 
 cfg = RetryConfig(
     default_strategy=decorrelated_jitter(max_s=1.5),
@@ -203,9 +203,9 @@ cfg = RetryConfig(
 
 Then from the repo root or any env where app_retry is on PYTHONPATH:
 ```bash
-reflexio doctor app_retry:cfg
+redress doctor app_retry:cfg
 # Show a normalized snapshot of active values:
-reflexio doctor app_retry:cfg --show
+redress doctor app_retry:cfg --show
 ```
 
 `doctor` accepts `module:attribute` pointing to a `RetryConfig`, `RetryPolicy`, or `AsyncRetryPolicy`. The attribute defaults to `config` if omitted (e.g., `myapp.settings` will look for `settings:config`).
@@ -218,7 +218,7 @@ Config snapshot:
   deadline_s: 60.0
   max_attempts: 5
   max_unknown_attempts: 2
-  default_strategy: reflexio.strategies.decorrelated_jitter.<locals>.f
+  default_strategy: redress.strategies.decorrelated_jitter.<locals>.f
   class_strategies:
     (none)
   per_class_max_attempts:

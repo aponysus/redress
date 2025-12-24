@@ -1,8 +1,8 @@
-# Reflexio
+# Redress
 
 Classifier-driven retries with per-class backoff and structured hooks for Python services.
 
-## Why reflexio?
+## Why redress?
 
 - **Per-class backoff:** Tune retries by coarse error class (429 vs. 5xx vs. deadlocks).
 - **Pluggable classifiers:** Built-ins for HTTP status and SQLSTATE; easy to supply your own.
@@ -10,12 +10,12 @@ Classifier-driven retries with per-class backoff and structured hooks for Python
 - **Deterministic envelopes:** Deadlines, max attempts, and caps for unknown errors.
 - **Best-effort observability:** Metric/log hooks that never break workloads.
 
-[More background here](blog/why-reflexio.md)
+[More background here](blog/why-redress.md)
 
 ## Quick start
 
 ```python
-from reflexio import retry
+from redress import retry
 
 @retry  # default_classifier + decorrelated_jitter(max_s=5.0)
 def fetch_user():
@@ -33,8 +33,8 @@ async def fetch_user_async():
 Prefer policies directly?
 
 ```python
-from reflexio import RetryPolicy, default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
 
 policy = RetryPolicy(
     classifier=default_classifier,

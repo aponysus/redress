@@ -214,8 +214,8 @@ def _run_doctor(target: str, *, show: bool) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="reflexio",
-        description="Utility CLI for reflexio. Use 'reflexio doctor module:attr' to lint configs.",
+        prog="redress",
+        description="Utility CLI for redress. Use 'redress doctor module:attr' to lint configs.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 

@@ -6,9 +6,9 @@ import random
 import hypothesis.strategies as st
 from hypothesis import given
 
-import reflexio.strategies as strategies
-from reflexio.errors import ErrorClass
-from reflexio.strategies import decorrelated_jitter, equal_jitter, token_backoff
+import redress.strategies as strategies
+from redress.errors import ErrorClass
+from redress.strategies import decorrelated_jitter, equal_jitter, token_backoff
 
 
 def test_decorrelated_jitter_bounds() -> None:

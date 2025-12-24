@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 
-from reflexio.metrics import otel_metric_hook, prometheus_metric_hook
+from redress.metrics import otel_metric_hook, prometheus_metric_hook
 
 
 class _FakePromCounter:
@@ -44,10 +44,10 @@ def test_prometheus_metric_hook_invokes_labels() -> None:
 
 def test_otel_metric_hook_invokes_add_with_attributes() -> None:
     meter = _FakeMeter()
-    hook = otel_metric_hook(meter, name="reflexio_events")
+    hook = otel_metric_hook(meter, name="redress_events")
     hook("success", 2, 0.0, {"operation": "sync"})
 
-    assert meter.created == ["reflexio_events"]
+    assert meter.created == ["redress_events"]
     assert len(meter.counter.calls) == 1
     call = meter.counter.calls[0]
     assert call["amount"] == 1

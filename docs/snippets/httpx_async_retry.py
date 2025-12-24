@@ -11,9 +11,9 @@ from typing import Any
 
 import httpx
 
-from reflexio import AsyncRetryPolicy, default_classifier
-from reflexio.errors import ErrorClass
-from reflexio.strategies import decorrelated_jitter
+from redress import AsyncRetryPolicy, default_classifier
+from redress.errors import ErrorClass
+from redress.strategies import decorrelated_jitter
 
 
 def log_metric(event: str, attempt: int, sleep_s: float, tags: dict[str, Any]) -> None:

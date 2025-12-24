@@ -5,8 +5,8 @@
 `RetryPolicy` and `AsyncRetryPolicy` wrap sync/async callables:
 
 ```python
-from reflexio import RetryPolicy, AsyncRetryPolicy, default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy, AsyncRetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
 
 policy = RetryPolicy(
     classifier=default_classifier,
@@ -33,7 +33,7 @@ with policy.context(operation="batch") as retry:
 `@retry` auto-chooses sync/async policy and defaults to `default_classifier` + `decorrelated_jitter(max_s=5.0)`:
 
 ```python
-from reflexio import retry
+from redress import retry
 
 @retry
 def fetch_user():

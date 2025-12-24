@@ -1,8 +1,8 @@
-site_name: reflexio
+site_name: redress
 site_description: Smarter, classifier-driven retries for Python
-site_url: https://aponysus.github.io/reflexio/
-repo_name: aponysus/reflexio
-repo_url: https://github.com/aponysus/reflexio
+site_url: https://aponysus.github.io/redress/
+repo_name: aponysus/redress
+repo_url: https://github.com/aponysus/redress
 docs_dir: docs
 theme:
   name: material
@@ -22,7 +22,7 @@ markdown_extensions:
   - pymdownx.superfences
 nav:
   - Overview: index.md
-  - Why Reflexio: blog/why-reflexio.md
+  - Why Redress: blog/why-redress.md
   - Getting started: getting-started.md
   - Concepts:
       - Error classes & classifiers: concepts/error-classes.md

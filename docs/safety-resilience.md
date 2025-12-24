@@ -1,6 +1,6 @@
 # Safety and resilience
 
-This page covers how reflexio behaves under failure and how to configure it for production.
+This page covers how redress behaves under failure and how to configure it for production.
 
 ## Hook failure isolation
 
@@ -20,7 +20,7 @@ def safe_metric_hook(hook, logger):
         try:
             hook(event, attempt, sleep_s, tags)
         except Exception as exc:
-            logger.warning("reflexio_metric_hook_failed", error=str(exc))
+            logger.warning("redress_metric_hook_failed", error=str(exc))
     return _hook
 ```
 

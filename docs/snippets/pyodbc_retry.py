@@ -7,7 +7,7 @@ This script shows how to:
   * Fetch rows in batches with retries
 
 Setup:
-  pip install pyodbc reflexio
+  pip install pyodbc redress
   export PYODBC_CONN_STR="DRIVER={ODBC Driver 18 for SQL Server};SERVER=localhost;DATABASE=mydb;UID=user;PWD=pass"
 
 Note: adjust the connection string and query for your environment. The classifier
@@ -20,9 +20,9 @@ from collections.abc import Iterable, Iterator, Sequence
 import pyodbc
 
 from docs.snippets.pyodbc_classifier import pyodbc_classifier
-from reflexio import RetryPolicy
-from reflexio.errors import ErrorClass
-from reflexio.strategies import decorrelated_jitter
+from redress import RetryPolicy
+from redress.errors import ErrorClass
+from redress.strategies import decorrelated_jitter
 
 
 def fetch_rows_in_batches(

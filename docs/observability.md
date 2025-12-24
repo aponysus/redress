@@ -29,7 +29,7 @@ Avoid payloads or sensitive fields in tags; stick to identifiers.
 ## Prometheus pattern
 
 ```python
-from reflexio.metrics import prometheus_metric_hook
+from redress.metrics import prometheus_metric_hook
 
 policy.call(
     lambda: do_work(),
@@ -43,11 +43,11 @@ Counter should expose `.labels(event=..., **tags).inc()`.
 ## OTEL pattern (pseudo-code)
 
 ```python
-from reflexio.metrics import otel_metric_hook
+from redress.metrics import otel_metric_hook
 
 policy.call(
     lambda: do_work(),
-    on_metric=otel_metric_hook(meter, name="reflexio_attempts"),
+    on_metric=otel_metric_hook(meter, name="redress_attempts"),
     operation="sync_user",
 )
 ```
@@ -81,7 +81,7 @@ You can use the same shape for log hooks; ensure tests avoid networked backends 
 
 ```python
 import structlog
-from reflexio import retry
+from redress import retry
 
 logger = structlog.get_logger()
 
@@ -96,10 +96,10 @@ def do_work():
 ## OTEL counter example (pseudo-code)
 
 ```python
-from reflexio.metrics import otel_metric_hook
+from redress.metrics import otel_metric_hook
 
 meter = ...  # your OTEL meter
-metric_hook = otel_metric_hook(meter, name="reflexio_events")
+metric_hook = otel_metric_hook(meter, name="redress_events")
 
 @retry(on_metric=metric_hook, operation="fetch_user")
 def do_work():
@@ -110,10 +110,10 @@ def do_work():
 
 ```python
 from prometheus_client import Counter, start_http_server
-from reflexio.metrics import prometheus_metric_hook
-from reflexio import retry
+from redress.metrics import prometheus_metric_hook
+from redress import retry
 
-counter = Counter("reflexio_events", "Retry events", ["event", "class", "operation", "err"])
+counter = Counter("redress_events", "Retry events", ["event", "class", "operation", "err"])
 metric_hook = prometheus_metric_hook(counter)
 start_http_server(8000)
 

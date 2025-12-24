@@ -9,9 +9,9 @@ Built-ins (all return a `StrategyFn`):
 Example:
 
 ```python
-from reflexio import RetryPolicy, default_classifier
-from reflexio.errors import ErrorClass
-from reflexio.strategies import decorrelated_jitter, equal_jitter
+from redress import RetryPolicy, default_classifier
+from redress.errors import ErrorClass
+from redress.strategies import decorrelated_jitter, equal_jitter
 
 policy = RetryPolicy(
     classifier=default_classifier,

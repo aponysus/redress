@@ -1,4 +1,4 @@
-# Why Naive Retry Logic Fails (and How Reflexio Tries to Fix It)
+# Why Naive Retry Logic Fails (and How Redress Tries to Fix It)
 
 Most of the time, retry logic gets added at the last minute:
 
@@ -10,16 +10,16 @@ It works in dev. It mostly works in staging. Then production hits, a dependency 
 
 The core problem: **naive retries treat all failures the same**. Real systems don’t.
 
-This post walks through how I ended up designing **reflexio** the way I did: error classification, per-class strategies, and an observability hook instead of a big generic “retry until it works” hammer.
+This post walks through how I ended up designing **redress** the way I did: error classification, per-class strategies, and an observability hook instead of a big generic “retry until it works” hammer.
 
 ---
 
 # 1. A simple retry isn’t enough
 
-The easiest way to use reflexio is the `@retry` decorator:
+The easiest way to use redress is the `@retry` decorator:
 
 ```python
-from reflexio import retry
+from redress import retry
 
 @retry  # uses default_classifier + decorrelated_jitter(max_s=5.0)
 def fetch_user(user_id: str):
@@ -37,7 +37,7 @@ This already avoids many pitfalls of naive retry loops.
 
 # 2. Error classes: not every failure is equal
 
-Reflexio works around a small set of coarse error classes:
+Redress works around a small set of coarse error classes:
 
 - **PERMANENT**
 - **CONCURRENCY**
@@ -48,7 +48,7 @@ Reflexio works around a small set of coarse error classes:
 
 The default classifier does a best-effort mapping:
 
-- Looks for explicit reflexio error types.
+- Looks for explicit redress error types.
 - Checks numeric codes like `err.status` or `err.code`.
 - Uses name heuristics for common DB/API error patterns.
 - Falls back to `UNKNOWN` if it can’t place it.
@@ -69,9 +69,9 @@ Even this coarse structure avoids a lot of self-inflicted pain.
 For more control, you work with `RetryPolicy`:
 
 ```python
-from reflexio.policy import RetryPolicy
-from reflexio.classify import default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress.policy import RetryPolicy
+from redress.classify import default_classifier
+from redress.strategies import decorrelated_jitter
 
 policy = RetryPolicy(
     classifier=default_classifier,
@@ -99,10 +99,10 @@ You probably want different behavior for:
 Here's how to do that:
 
 ```python
-from reflexio.policy import RetryPolicy
-from reflexio.classify import default_classifier
-from reflexio.strategies import decorrelated_jitter, equal_jitter
-from reflexio.errors import ErrorClass
+from redress.policy import RetryPolicy
+from redress.classify import default_classifier
+from redress.strategies import decorrelated_jitter, equal_jitter
+from redress.errors import ErrorClass
 
 policy = RetryPolicy(
     classifier=default_classifier,
@@ -130,9 +130,9 @@ Built-ins include `decorrelated_jitter`, `equal_jitter`, and `token_backoff`.
 `@retry` is just a thin wrapper around `RetryPolicy`:
 
 ```python
-from reflexio import retry
-from reflexio.classify import default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import retry
+from redress.classify import default_classifier
+from redress.strategies import decorrelated_jitter
 
 @retry(
     classifier=default_classifier,
@@ -145,7 +145,7 @@ def fetch_user_fast_retry(user_id):
 Or reuse a shared policy:
 
 ```python
-from reflexio.policy import RetryPolicy
+from redress.policy import RetryPolicy
 
 shared_policy = RetryPolicy(
     classifier=default_classifier,
@@ -165,7 +165,7 @@ The context manager version is handy for batching operations under one retry env
 
 A common reliability failure is endlessly retrying unknown errors.
 
-Reflexio lets you bound them:
+Redress lets you bound them:
 
 ```python
 policy = RetryPolicy(
@@ -186,9 +186,9 @@ This ensures mystery failures never run wild.
 Async support mirrors sync exactly:
 
 ```python
-from reflexio import AsyncRetryPolicy
-from reflexio.classify import default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import AsyncRetryPolicy
+from redress.classify import default_classifier
+from redress.strategies import decorrelated_jitter
 
 async_policy = AsyncRetryPolicy(
     classifier=default_classifier,
@@ -209,7 +209,7 @@ No separate API, no special strategy types—just async versions of the same pol
 
 Retries hide a lot of behavior unless you surface it intentionally.
 
-Reflexio exposes one hook:
+Redress exposes one hook:
 
 ```python
 def metric_hook(event, attempt, sleep_s, tags):
@@ -234,7 +234,7 @@ This is easy to wire into Prometheus, logging, tracing, or anything else.
 
 # 9. Why this matters
 
-Reflexio isn’t trying to out-feature other retry libraries.  
+Redress isn’t trying to out-feature other retry libraries.  
 It’s trying to make retry behavior:
 
 - **semantic** (via error classes)
@@ -248,6 +248,6 @@ retry storms, hammering rate-limited APIs, and inconsistency across services.
 
 If you want to explore more:
 
-- GitHub: [https://github.com/aponysus/reflexio](https://github.com/aponysus/reflexio)
-- Docs: [https://aponysus.github.io/reflexio/](https://aponysus.github.io/reflexio/)
-- PyPI: [https://pypi.org/project/reflexio/](https://pypi.org/project/reflexio/)
+- GitHub: [https://github.com/aponysus/redress](https://github.com/aponysus/redress)
+- Docs: [https://aponysus.github.io/redress/](https://aponysus.github.io/redress/)
+- PyPI: [https://pypi.org/project/redress/](https://pypi.org/project/redress/)

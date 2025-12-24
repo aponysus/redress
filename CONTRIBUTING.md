@@ -91,8 +91,8 @@ This should create:
 
 ```text
 dist/
-  reflexio-X.Y.Z.tar.gz
-  reflexio-X.Y.Z-py3-none-any.whl
+  redress-X.Y.Z.tar.gz
+  redress-X.Y.Z-py3-none-any.whl
 ```
 
 ### 4. Upload to TestPyPI
@@ -115,9 +115,9 @@ dist/
    uv venv .venv-test
    source .venv-test/bin/activate
 
-   uv pip install -i https://test.pypi.org/simple reflexio
+   uv pip install -i https://test.pypi.org/simple redress
 
-   python -c "from reflexio import RetryPolicy"
+   python -c "from redress import RetryPolicy"
    ```
 
    Deactivate the test env when done.

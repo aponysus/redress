@@ -1,12 +1,12 @@
-# reflexio usage patterns
+# redress usage patterns
 
 ## Per-class strategies and limits
 
 ```python
-from reflexio.policy import RetryPolicy
-from reflexio.errors import ErrorClass
-from reflexio.classify import default_classifier
-from reflexio.strategies import decorrelated_jitter, equal_jitter
+from redress.policy import RetryPolicy
+from redress.errors import ErrorClass
+from redress.classify import default_classifier
+from redress.strategies import decorrelated_jitter, equal_jitter
 
 policy = RetryPolicy(
     classifier=default_classifier,
@@ -37,9 +37,9 @@ Metrics/logs include `operation=fetch_profile`, letting you split dashboards per
 ## RetryConfig for shared settings
 
 ```python
-from reflexio.config import RetryConfig
-from reflexio.policy import RetryPolicy
-from reflexio.classify import default_classifier
+from redress.config import RetryConfig
+from redress.policy import RetryPolicy
+from redress.classify import default_classifier
 
 cfg = RetryConfig(
     deadline_s=45.0,
@@ -59,9 +59,9 @@ policy = RetryPolicy.from_config(cfg, classifier=default_classifier)
 
 ```python
 import asyncio
-from reflexio import AsyncRetryPolicy, default_classifier
-from reflexio.errors import ErrorClass
-from reflexio.strategies import decorrelated_jitter
+from redress import AsyncRetryPolicy, default_classifier
+from redress.errors import ErrorClass
+from redress.strategies import decorrelated_jitter
 
 async_policy = AsyncRetryPolicy(
     classifier=default_classifier,
@@ -82,7 +82,7 @@ Observability hooks (`on_metric`, `on_log`), deadlines, and per-class limits beh
 ## Logging and metrics hooks together
 
 ```python
-from reflexio.metrics import prometheus_metric_hook
+from redress.metrics import prometheus_metric_hook
 
 def log_hook(event: str, fields: dict) -> None:
     logger.info("retry_event", extra={"event": event, **fields})
@@ -100,8 +100,8 @@ policy.call(
 The `retry` decorator wraps functions and chooses the right policy automatically based on whether the function is sync or async.
 
 ```python
-from reflexio import retry, default_classifier
-from reflexio.strategies import decorrelated_jitter
+from redress import retry, default_classifier
+from redress.strategies import decorrelated_jitter
 
 @retry  # defaults to default_classifier + decorrelated_jitter(max_s=5.0)
 def fetch_user():
@@ -135,18 +135,18 @@ async with async_policy.context(operation="batch") as retry:
 
 ## Helper classifiers
 
-`reflexio.extras` provides domain-oriented classifiers:
+`redress.extras` provides domain-oriented classifiers:
 
 - `http_classifier` – maps HTTP status codes (e.g., 429→RATE_LIMIT, 500→SERVER_ERROR, 408→TRANSIENT).
 - `sqlstate_classifier` – maps SQLSTATE codes (e.g., 40001/40P01→CONCURRENCY, HYT00/08xxx→TRANSIENT, 28xxx→AUTH).
 
 ## PyODBC classification example
 
-`reflexio` stays dependency-free, so database-specific classifiers live in docs. See `docs/snippets/pyodbc_classifier.py` for a SQLSTATE-based mapper.
+`redress` stays dependency-free, so database-specific classifiers live in docs. See `docs/snippets/pyodbc_classifier.py` for a SQLSTATE-based mapper.
 
 ```python
-from reflexio import retry
-from reflexio.strategies import decorrelated_jitter
+from redress import retry
+from redress.strategies import decorrelated_jitter
 from docs.snippets.pyodbc_classifier import pyodbc_classifier  # adjust import path as needed
 
 @retry(
