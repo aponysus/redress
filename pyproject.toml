@@ -101,13 +101,15 @@ quote-style = "double"
 line-ending = "lf"
 
 [tool.hatch.build]
+
+[tool.hatch.build.targets.wheel]
 packages = ["src/redress"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/redress/py.typed" = "redress/py.typed"
 
 [tool.hatch.build.targets.sdist.force-include]
-"src/redress/py.typed" = "redress/py.typed"
+"src/redress/py.typed" = "src/redress/py.typed"
 
 [build-system]
 requires = ["hatchling"]
