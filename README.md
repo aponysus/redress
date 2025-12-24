@@ -7,8 +7,11 @@
 [![Bench](https://img.shields.io/github/actions/workflow/status/aponysus/redress/ci.yml?label=bench)](https://github.com/aponysus/redress/actions/workflows/ci.yml)
 
 
+> redress (v.): to remedy or to set right.
 
-Composable, low-overhead retry policies with **pluggable classification**, **per-class backoff strategies**, and **structured observability hooks**.  
+Classifier-driven retries with per-class backoff and structured hooks for Python services.
+
+Composable, low-overhead retry policies with **sync/async symmetry**, **deterministic envelopes**, and **lightweight composition**.  
 Designed for services that need predictable retry behavior and clean integration with metrics/logging.
 
 ## Documentation

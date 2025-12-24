@@ -1,5 +1,7 @@
 # Redress
 
+> redress (v.): to remedy or to set right.
+
 Classifier-driven retries with per-class backoff and structured hooks for Python services.
 
 ## Why redress?
