@@ -6,7 +6,7 @@ labels: ""
 assignees: ""
 ---
 
-## Suggested title: <short, action-oriented title>
+## Title: <short, action-oriented title>
 
 ### Type
 
