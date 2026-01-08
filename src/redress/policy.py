@@ -389,7 +389,7 @@ class RetryPolicy(_BaseRetryPolicy):
 
                 if state.elapsed() > self.deadline:
                     state.emit("deadline_exceeded", attempt, 0.0, state.last_class, state.last_exc)
-                    raise
+                    raise exc
 
         # If we get here, we hit max_attempts without success.
         state.emit(
@@ -484,7 +484,7 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
 
                 if state.elapsed() > self.deadline:
                     state.emit("deadline_exceeded", attempt, 0.0, state.last_class, state.last_exc)
-                    raise
+                    raise exc
 
         state.emit(
             "max_attempts_exceeded",

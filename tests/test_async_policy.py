@@ -2,6 +2,7 @@
 
 
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -22,6 +23,17 @@ def _collect_metrics() -> tuple[MetricHook, list[tuple[str, int, float, dict[str
 
 def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:
     return 0.0
+
+
+class _FakeTime:
+    def __init__(self, start: datetime | None = None) -> None:
+        self._now = start or datetime.now(UTC)
+
+    def now(self) -> datetime:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += timedelta(seconds=seconds)
 
 
 def test_async_policy_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -89,3 +101,51 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert attempt == 1
     assert sleep_s == 0.0
     assert tags["class"] == ErrorClass.PERMANENT.name
+
+
+def test_async_deadline_exceeded_reraises_last_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+    class SlowError(Exception):
+        pass
+
+    fake_time = _FakeTime()
+
+    def fake_now(_: Any = None) -> datetime:
+        return fake_time.now()
+
+    monkeypatch.setattr(
+        "redress.policy.datetime", type("DT", (), {"now": staticmethod(fake_now), "UTC": UTC})
+    )
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+        fake_time.advance(seconds + 0.01)
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", fake_sleep)
+
+    calls = {"n": 0}
+
+    async def func() -> None:
+        calls["n"] += 1
+        fake_time.advance(0.2)
+        raise SlowError("still failing")
+
+    metric_hook, events = _collect_metrics()
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=lambda attempt, klass, prev: 10.0,
+        deadline_s=1.0,
+        max_attempts=5,
+    )
+
+    with pytest.raises(SlowError):
+        asyncio.run(policy.call(func, on_metric=metric_hook))
+
+    assert calls["n"] == 1
+    assert sleep_calls and sleep_calls[0] == pytest.approx(0.8)
+    assert "deadline_exceeded" in [event[0] for event in events]
