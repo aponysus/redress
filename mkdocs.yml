@@ -18,6 +18,8 @@ theme:
 markdown_extensions:
   - admonition
   - codehilite
+  - pymdownx.snippets:
+      base_path: "."
   - pymdownx.highlight
   - pymdownx.superfences
 nav:

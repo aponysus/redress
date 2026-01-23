@@ -1,6 +1,6 @@
 [project]
 name = "redress"
-version = "1.0.0"
+version = "1.0.1"
 description = "A composable retry policy framework with classification, jitter strategies, and observability hooks."
 readme = "README.md"
 requires-python = ">=3.11"
