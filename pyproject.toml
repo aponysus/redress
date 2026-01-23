@@ -114,3 +114,8 @@ packages = ["src/redress"]
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.14.6",
+]
