@@ -52,6 +52,12 @@ class _BaseRetryPolicy:
         return strategy
 
 
+@dataclass(frozen=True)
+class _RetryDecision:
+    action: Literal["retry", "raise"]
+    sleep_s: float = 0.0
+
+
 class _RetryState:
     """
     Shared state and utilities for sync/async retry execution.
@@ -111,9 +117,9 @@ class _RetryState:
             except Exception:
                 pass
 
-    def handle_exception(self, exc: BaseException, attempt: int) -> float:
+    def handle_exception(self, exc: BaseException, attempt: int) -> _RetryDecision:
         """
-        Process an exception and either compute backoff or re-raise.
+        Process an exception and return a retry/raise decision.
         """
         self.last_exc = exc
         klass = self.policy.classifier(exc)
@@ -123,11 +129,11 @@ class _RetryState:
         limit = self.policy.per_class_max_attempts.get(klass)
         if limit is not None and self.per_class_counts[klass] > limit:
             self.emit("max_attempts_exceeded", attempt, 0.0, klass, exc)
-            raise exc
+            return _RetryDecision("raise")
 
         if klass in (ErrorClass.PERMANENT, ErrorClass.AUTH, ErrorClass.PERMISSION):
             self.emit("permanent_fail", attempt, 0.0, klass, exc)
-            raise exc
+            return _RetryDecision("raise")
 
         if klass is ErrorClass.UNKNOWN:
             self.unknown_attempts += 1
@@ -136,11 +142,11 @@ class _RetryState:
                 and self.unknown_attempts > self.policy.max_unknown_attempts
             ):
                 self.emit("max_unknown_attempts_exceeded", attempt, 0.0, klass, exc)
-                raise exc
+                return _RetryDecision("raise")
 
         if self.elapsed() > self.policy.deadline:
             self.emit("deadline_exceeded", attempt, 0.0, klass, exc)
-            raise exc
+            return _RetryDecision("raise")
 
         strategy = self.policy._select_strategy(klass)
         sleep_s = strategy(attempt, klass, self.prev_sleep)
@@ -148,12 +154,12 @@ class _RetryState:
         remaining = self.policy.deadline - self.elapsed()
         if remaining.total_seconds() <= 0:
             self.emit("deadline_exceeded", attempt, 0.0, klass, exc)
-            raise exc
+            return _RetryDecision("raise")
 
         sleep_s = min(sleep_s, remaining.total_seconds())
         self.prev_sleep = sleep_s
         self.emit("retry", attempt, sleep_s, klass, exc)
-        return sleep_s
+        return _RetryDecision("retry", sleep_s)
 
 
 @dataclass
@@ -248,7 +254,8 @@ class RetryPolicy(_BaseRetryPolicy):
 
     max_unknown_attempts:
         Optional special cap for ErrorClass.UNKNOWN. If exceeded, the last
-        exception is re-raised even if the global max_attempts is not yet hit.
+        exception is re-raised with its original traceback even if the
+        global max_attempts is not yet hit.
 
     Notes
     -----
@@ -331,7 +338,8 @@ class RetryPolicy(_BaseRetryPolicy):
               * "permanent_fail"       – PERMANENT/AUTH/PERMISSION classes, no retry
               * "deadline_exceeded"    – wall-clock deadline exceeded
               * "retry"                – a retry is scheduled
-              * "max_attempts_exceeded"– we hit max_attempts and re-raise
+              * "max_attempts_exceeded"– we hit max_attempts and re-raise with
+                the original traceback
               * "max_unknown_attempts_exceeded" – UNKNOWN cap hit
 
             Default tags:
@@ -363,8 +371,9 @@ class RetryPolicy(_BaseRetryPolicy):
         Raises
         ------
         BaseException
-            The *original* exception from the last attempt, after retries
-            are exhausted or a non-retriable condition is hit.
+            The original exception from the last attempt, re-raised with
+            its original traceback after retries are exhausted or a
+            non-retriable condition is hit.
         """
         state = _RetryState(
             policy=self,
@@ -380,18 +389,27 @@ class RetryPolicy(_BaseRetryPolicy):
                 return result
 
             except Exception as exc:
-                try:
-                    sleep_s = state.handle_exception(exc, attempt)
-                except BaseException:
+                decision = state.handle_exception(exc, attempt)
+                if decision.action == "raise":
                     raise
 
-                time.sleep(sleep_s)
+                time.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
                     state.emit("deadline_exceeded", attempt, 0.0, state.last_class, state.last_exc)
-                    raise exc
+                    raise
 
-        # If we get here, we hit max_attempts without success.
+                if attempt == self.max_attempts:
+                    state.emit(
+                        "max_attempts_exceeded",
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        state.last_exc,
+                    )
+                    raise
+
+        # Defensive fallback if we exit the loop without returning or raising.
         state.emit(
             "max_attempts_exceeded",
             self.max_attempts,
@@ -399,11 +417,8 @@ class RetryPolicy(_BaseRetryPolicy):
             state.last_class,
             state.last_exc,
         )
-
-        # Re-raise the last exception, not a generic RuntimeError – this is
-        # much more useful for callers.
-        if state.last_exc is not None:
-            raise state.last_exc
+        if state.last_exc is not None and state.last_exc.__traceback__ is not None:
+            raise state.last_exc.with_traceback(state.last_exc.__traceback__)
 
         # Extremely unlikely: no exception and no result.
         raise RuntimeError("Retry attempts exhausted with no captured exception")
@@ -475,16 +490,25 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
                 state.emit("success", attempt, 0.0)
                 return result
             except Exception as exc:
-                try:
-                    sleep_s = state.handle_exception(exc, attempt)
-                except BaseException:
+                decision = state.handle_exception(exc, attempt)
+                if decision.action == "raise":
                     raise
 
-                await asyncio.sleep(sleep_s)
+                await asyncio.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
                     state.emit("deadline_exceeded", attempt, 0.0, state.last_class, state.last_exc)
-                    raise exc
+                    raise
+
+                if attempt == self.max_attempts:
+                    state.emit(
+                        "max_attempts_exceeded",
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        state.last_exc,
+                    )
+                    raise
 
         state.emit(
             "max_attempts_exceeded",
@@ -494,8 +518,8 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
             state.last_exc,
         )
 
-        if state.last_exc is not None:
-            raise state.last_exc
+        if state.last_exc is not None and state.last_exc.__traceback__ is not None:
+            raise state.last_exc.with_traceback(state.last_exc.__traceback__)
 
         raise RuntimeError("Retry attempts exhausted with no captured exception")
 

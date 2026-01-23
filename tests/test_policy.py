@@ -1,6 +1,7 @@
 # tests/test_policy.py
 
 
+import traceback
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -63,6 +64,13 @@ def _collect_logs() -> tuple[Any, list[tuple[str, dict[str, Any]]]]:
     return hook, events
 
 
+def _assert_tb_has_frame(err: BaseException, func_name: str) -> None:
+    tb = err.__traceback__
+    assert tb is not None
+    frames = traceback.extract_tb(tb)
+    assert any(frame.name == func_name for frame in frames)
+
+
 def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:
     """
     Strategy that always returns 0 seconds sleep (for fast tests).
@@ -97,8 +105,10 @@ def test_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
         max_attempts=5,
     )
 
-    with pytest.raises(PermanentError):
+    with pytest.raises(PermanentError) as excinfo:
         policy.call(func, on_metric=metric_hook)
+
+    _assert_tb_has_frame(excinfo.value, func.__name__)
 
     # Only one attempt
     assert call_count["n"] == 1
@@ -446,8 +456,10 @@ def test_per_class_max_attempts_limits_retries(monkeypatch: pytest.MonkeyPatch) 
         max_attempts=10,
     )
 
-    with pytest.raises(RateLimitError):
+    with pytest.raises(RateLimitError) as excinfo:
         policy.call(func, on_metric=metric_hook)
+
+    _assert_tb_has_frame(excinfo.value, func.__name__)
 
     # initial + 2 retries, then cap hit
     assert calls["n"] == 3
@@ -578,8 +590,10 @@ def test_unknown_errors_respect_max_unknown_attempts(monkeypatch: pytest.MonkeyP
         max_unknown_attempts=2,
     )
 
-    with pytest.raises(WeirdError):
+    with pytest.raises(WeirdError) as excinfo:
         policy.call(func, on_metric=metric_hook)
+
+    _assert_tb_has_frame(excinfo.value, func.__name__)
 
     # Should only attempt 3 times total:
     #   1st unknown  -> retry
@@ -635,8 +649,10 @@ def test_deadline_exceeded_stops_retries(monkeypatch: pytest.MonkeyPatch) -> Non
         max_attempts=10,
     )
 
-    with pytest.raises(SlowError):
+    with pytest.raises(SlowError) as excinfo:
         policy.call(func, on_metric=metric_hook)
+
+    _assert_tb_has_frame(excinfo.value, func.__name__)
 
     # We should see at least one retry but stop once > 2 seconds passed.
     # Exact count depends on start, but we can check deadline_exceeded metric.
