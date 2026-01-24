@@ -3,6 +3,7 @@
 ## Policies
 
 - `RetryPolicy`, `AsyncRetryPolicy`
+  - Accept `result_classifier` for result-based retries
   - `.call(func, on_metric=None, on_log=None, operation=None)`
   - `.context(on_metric=None, on_log=None, operation=None)`
   - `.from_config(config, classifier=...)`
@@ -33,6 +34,7 @@
 
 - `ErrorClass` enum
 - `StopReason` enum
+- `RetryExhaustedError` terminal error (result-based exhaustion)
 - Marker exceptions: `PermanentError`, `RateLimitError`, `ConcurrencyError`
 
 ## Metrics helpers

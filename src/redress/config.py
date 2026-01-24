@@ -1,8 +1,12 @@
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from typing import Any
 
+from .classify import Classification
 from .errors import ErrorClass
 from .strategies import StrategyFn
+
+ResultClassifierFn = Callable[[Any], ErrorClass | Classification | None]
 
 
 @dataclass
@@ -14,6 +18,7 @@ class RetryConfig:
 
     default_strategy: StrategyFn | None = None
     class_strategies: Mapping[ErrorClass, StrategyFn] | None = None
+    result_classifier: ResultClassifierFn | None = None
 
     def per_class_limits(self) -> dict[ErrorClass, int]:
         """

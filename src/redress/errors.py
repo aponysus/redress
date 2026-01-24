@@ -1,4 +1,6 @@
+from dataclasses import dataclass
 from enum import Enum, auto
+from typing import Any
 
 
 class ErrorClass(Enum):
@@ -28,6 +30,18 @@ class StopReason(str, Enum):
     NON_RETRYABLE_CLASS = "NON_RETRYABLE_CLASS"
     NO_STRATEGY = "NO_STRATEGY"
     ABORTED = "ABORTED"
+
+
+@dataclass(frozen=True)
+class RetryExhaustedError(Exception):
+    stop_reason: StopReason
+    attempts: int
+    last_class: ErrorClass | None
+    last_exception: BaseException | None
+    last_result: Any | None
+
+    def __str__(self) -> str:
+        return f"Retry stopped: {self.stop_reason.value}"
 
 
 class PermanentError(Exception):

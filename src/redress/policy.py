@@ -9,8 +9,8 @@ from datetime import timedelta
 from typing import Any, Literal, ParamSpec, TypeVar, cast, overload
 
 from .classify import Classification, default_classifier
-from .config import RetryConfig
-from .errors import ErrorClass, StopReason
+from .config import ResultClassifierFn, RetryConfig
+from .errors import ErrorClass, RetryExhaustedError, StopReason
 from .strategies import (
     BackoffContext,
     BackoffFn,
@@ -19,6 +19,7 @@ from .strategies import (
     decorrelated_jitter,
 )
 
+FailureCause = Literal["exception", "result"]
 ClassifierFn = Callable[[BaseException], ErrorClass | Classification]
 MetricHook = Callable[[str, int, float, dict[str, Any]], None]
 LogHook = Callable[[str, dict[str, Any]], None]
@@ -31,6 +32,7 @@ class _BaseRetryPolicy:
         self,
         *,
         classifier: ClassifierFn,
+        result_classifier: ResultClassifierFn | None = None,
         strategy: StrategyFn | None = None,
         strategies: Mapping[ErrorClass, StrategyFn] | None = None,
         deadline_s: float = 60.0,
@@ -45,6 +47,7 @@ class _BaseRetryPolicy:
             )
 
         self.classifier: ClassifierFn = classifier
+        self.result_classifier: ResultClassifierFn | None = result_classifier
         self._strategies: dict[ErrorClass, BackoffFn] = {
             klass: _normalize_strategy(fn) for klass, fn in (strategies or {}).items()
         }
@@ -110,7 +113,10 @@ class _RetryState:
         self.start_mono = time.monotonic()
         self.prev_sleep: float | None = None
         self.last_exc: BaseException | None = None
+        self.last_result: Any | None = None
         self.last_class: ErrorClass | None = None
+        self.last_cause: FailureCause | None = None
+        self.last_stop_reason: StopReason | None = None
         self.unknown_attempts: int = 0
         self.per_class_counts: dict[ErrorClass, int] = collections.defaultdict(int)
 
@@ -125,6 +131,7 @@ class _RetryState:
         klass: ErrorClass | None = None,
         exc: BaseException | None = None,
         stop_reason: StopReason | None = None,
+        cause: FailureCause | None = None,
         classification: Classification | None = None,
     ) -> None:
         tags: dict[str, Any] = {}
@@ -137,6 +144,9 @@ class _RetryState:
 
         if stop_reason is not None:
             tags["stop_reason"] = stop_reason.value
+
+        if cause is not None:
+            tags["cause"] = cause
 
         if self.operation:
             tags["operation"] = self.operation
@@ -160,18 +170,74 @@ class _RetryState:
             except Exception:
                 pass
 
+    def record_failure(
+        self,
+        *,
+        classification: Classification,
+        cause: FailureCause,
+        exc: BaseException | None,
+        result: Any | None,
+    ) -> None:
+        self.last_class = classification.klass
+        self.last_cause = cause
+        if cause == "exception":
+            self.last_exc = exc
+            self.last_result = None
+        else:
+            self.last_result = result
+            self.last_exc = None
+
     def handle_exception(self, exc: BaseException, attempt: int) -> _RetryDecision:
         """
         Process an exception and return a retry/raise decision.
         """
-        self.last_exc = exc
         classification = _normalize_classification(self.policy.classifier(exc))
+        return self._handle_failure(
+            classification=classification,
+            attempt=attempt,
+            cause="exception",
+            exc=exc,
+            result=None,
+        )
+
+    def handle_result(
+        self,
+        result: Any,
+        classification: Classification,
+        attempt: int,
+    ) -> _RetryDecision:
+        """
+        Process a result-based failure and return a retry/raise decision.
+        """
+        return self._handle_failure(
+            classification=classification,
+            attempt=attempt,
+            cause="result",
+            exc=None,
+            result=result,
+        )
+
+    def _handle_failure(
+        self,
+        *,
+        classification: Classification,
+        attempt: int,
+        cause: FailureCause,
+        exc: BaseException | None,
+        result: Any | None,
+    ) -> _RetryDecision:
+        self.record_failure(
+            classification=classification,
+            cause=cause,
+            exc=exc,
+            result=result,
+        )
         klass = classification.klass
-        self.last_class = klass
         self.per_class_counts[klass] += 1
 
         limit = self.policy.per_class_max_attempts.get(klass)
         if limit is not None and self.per_class_counts[klass] > limit:
+            self.last_stop_reason = StopReason.MAX_ATTEMPTS_PER_CLASS
             self.emit(
                 "max_attempts_exceeded",
                 attempt,
@@ -179,10 +245,12 @@ class _RetryState:
                 klass,
                 exc,
                 stop_reason=StopReason.MAX_ATTEMPTS_PER_CLASS,
+                cause=cause,
             )
             return _RetryDecision("raise")
 
         if klass in (ErrorClass.PERMANENT, ErrorClass.AUTH, ErrorClass.PERMISSION):
+            self.last_stop_reason = StopReason.NON_RETRYABLE_CLASS
             self.emit(
                 "permanent_fail",
                 attempt,
@@ -190,6 +258,7 @@ class _RetryState:
                 klass,
                 exc,
                 stop_reason=StopReason.NON_RETRYABLE_CLASS,
+                cause=cause,
             )
             return _RetryDecision("raise")
 
@@ -199,6 +268,7 @@ class _RetryState:
                 self.policy.max_unknown_attempts is not None
                 and self.unknown_attempts > self.policy.max_unknown_attempts
             ):
+                self.last_stop_reason = StopReason.MAX_UNKNOWN_ATTEMPTS
                 self.emit(
                     "max_unknown_attempts_exceeded",
                     attempt,
@@ -206,10 +276,12 @@ class _RetryState:
                     klass,
                     exc,
                     stop_reason=StopReason.MAX_UNKNOWN_ATTEMPTS,
+                    cause=cause,
                 )
                 return _RetryDecision("raise")
 
         if self.elapsed() > self.policy.deadline:
+            self.last_stop_reason = StopReason.DEADLINE_EXCEEDED
             self.emit(
                 "deadline_exceeded",
                 attempt,
@@ -217,11 +289,13 @@ class _RetryState:
                 klass,
                 exc,
                 stop_reason=StopReason.DEADLINE_EXCEEDED,
+                cause=cause,
             )
             return _RetryDecision("raise")
 
         strategy = self.policy._select_strategy(klass)
         if strategy is None:
+            self.last_stop_reason = StopReason.NO_STRATEGY
             self.emit(
                 "no_strategy_configured",
                 attempt,
@@ -229,12 +303,14 @@ class _RetryState:
                 klass,
                 exc,
                 stop_reason=StopReason.NO_STRATEGY,
+                cause=cause,
             )
             return _RetryDecision("raise")
 
         remaining = self.policy.deadline - self.elapsed()
         remaining_s = remaining.total_seconds()
         if remaining_s <= 0:
+            self.last_stop_reason = StopReason.DEADLINE_EXCEEDED
             self.emit(
                 "deadline_exceeded",
                 attempt,
@@ -242,6 +318,7 @@ class _RetryState:
                 klass,
                 exc,
                 stop_reason=StopReason.DEADLINE_EXCEEDED,
+                cause=cause,
             )
             return _RetryDecision("raise")
 
@@ -250,7 +327,7 @@ class _RetryState:
             classification=classification,
             prev_sleep_s=self.prev_sleep,
             remaining_s=remaining_s,
-            cause="exception",
+            cause=cause,
         )
         sleep_s = strategy(ctx)
 
@@ -260,7 +337,15 @@ class _RetryState:
         sleep_s = max(0.0, sleep_s)
         sleep_s = min(sleep_s, remaining_s)
         self.prev_sleep = sleep_s
-        self.emit("retry", attempt, sleep_s, klass, exc, classification=classification)
+        self.emit(
+            "retry",
+            attempt,
+            sleep_s,
+            klass,
+            exc,
+            cause=cause,
+            classification=classification,
+        )
         return _RetryDecision("retry", sleep_s)
 
 
@@ -324,6 +409,10 @@ class RetryPolicy(_BaseRetryPolicy):
     classifier:
         Function mapping an exception to an ErrorClass or a Classification.
 
+    result_classifier:
+        Optional function mapping a return value to None (success) or to an
+        ErrorClass/Classification that should be retried.
+
     strategy:
         Optional default backoff strategy to use for *all* error classes
         that are not explicitly configured in `strategies`. This keeps the
@@ -371,6 +460,7 @@ class RetryPolicy(_BaseRetryPolicy):
         self,
         *,
         classifier: ClassifierFn,
+        result_classifier: ResultClassifierFn | None = None,
         strategy: StrategyFn | None = None,
         strategies: Mapping[ErrorClass, StrategyFn] | None = None,
         deadline_s: float = 60.0,
@@ -380,6 +470,7 @@ class RetryPolicy(_BaseRetryPolicy):
     ) -> None:
         super().__init__(
             classifier=classifier,
+            result_classifier=result_classifier,
             strategy=strategy,
             strategies=strategies,
             deadline_s=deadline_s,
@@ -400,6 +491,7 @@ class RetryPolicy(_BaseRetryPolicy):
         """
         return cls(
             classifier=classifier,
+            result_classifier=config.result_classifier,
             strategy=config.default_strategy,
             strategies=config.class_strategies,
             deadline_s=config.deadline_s,
@@ -479,6 +571,10 @@ class RetryPolicy(_BaseRetryPolicy):
             The original exception from the last attempt, re-raised with
             its original traceback after retries are exhausted or a
             non-retriable condition is hit.
+
+        RetryExhaustedError
+            Raised when retries stop due to a result-based failure (no
+            exception was thrown).
         """
         state = _RetryState(
             policy=self,
@@ -490,12 +586,74 @@ class RetryPolicy(_BaseRetryPolicy):
         for attempt in range(1, self.max_attempts + 1):
             try:
                 result = func()
-                state.emit("success", attempt, 0.0)
-                return result
+                if self.result_classifier is None:
+                    state.emit("success", attempt, 0.0)
+                    return result
+
+                classification_result = self.result_classifier(result)
+                if classification_result is None:
+                    state.emit("success", attempt, 0.0)
+                    return result
+
+                classification = _normalize_classification(classification_result)
+                decision = state.handle_result(result, classification, attempt)
+                if decision.action == "raise":
+                    stop_reason = state.last_stop_reason or StopReason.MAX_ATTEMPTS_GLOBAL
+                    raise RetryExhaustedError(
+                        stop_reason=stop_reason,
+                        attempts=attempt,
+                        last_class=state.last_class,
+                        last_exception=None,
+                        last_result=state.last_result,
+                    )
+
+                time.sleep(decision.sleep_s)
+
+                if state.elapsed() > self.deadline:
+                    state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
+                    state.emit(
+                        "deadline_exceeded",
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        None,
+                        stop_reason=StopReason.DEADLINE_EXCEEDED,
+                        cause=state.last_cause,
+                    )
+                    stop_reason = state.last_stop_reason or StopReason.DEADLINE_EXCEEDED
+                    raise RetryExhaustedError(
+                        stop_reason=stop_reason,
+                        attempts=attempt,
+                        last_class=state.last_class,
+                        last_exception=None,
+                        last_result=state.last_result,
+                    )
+
+                if attempt == self.max_attempts:
+                    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+                    state.emit(
+                        "max_attempts_exceeded",
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        None,
+                        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                        cause=state.last_cause,
+                    )
+                    stop_reason = state.last_stop_reason or StopReason.MAX_ATTEMPTS_GLOBAL
+                    raise RetryExhaustedError(
+                        stop_reason=stop_reason,
+                        attempts=attempt,
+                        last_class=state.last_class,
+                        last_exception=None,
+                        last_result=state.last_result,
+                    )
 
             except asyncio.CancelledError:
                 raise
             except (KeyboardInterrupt, SystemExit):
+                raise
+            except RetryExhaustedError:
                 raise
             except Exception as exc:
                 decision = state.handle_exception(exc, attempt)
@@ -505,6 +663,7 @@ class RetryPolicy(_BaseRetryPolicy):
                 time.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
+                    state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
                         "deadline_exceeded",
                         attempt,
@@ -512,10 +671,12 @@ class RetryPolicy(_BaseRetryPolicy):
                         state.last_class,
                         state.last_exc,
                         stop_reason=StopReason.DEADLINE_EXCEEDED,
+                        cause=state.last_cause,
                     )
                     raise
 
                 if attempt == self.max_attempts:
+                    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
                         "max_attempts_exceeded",
                         attempt,
@@ -523,6 +684,7 @@ class RetryPolicy(_BaseRetryPolicy):
                         state.last_class,
                         state.last_exc,
                         stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                        cause=state.last_cause,
                     )
                     raise
 
@@ -534,7 +696,17 @@ class RetryPolicy(_BaseRetryPolicy):
             state.last_class,
             state.last_exc,
             stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+            cause=state.last_cause,
         )
+        state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+        if state.last_cause == "result":
+            raise RetryExhaustedError(
+                stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                attempts=self.max_attempts,
+                last_class=state.last_class,
+                last_exception=None,
+                last_result=state.last_result,
+            )
         if state.last_exc is not None and state.last_exc.__traceback__ is not None:
             raise state.last_exc.with_traceback(state.last_exc.__traceback__)
 
@@ -576,6 +748,7 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
         """
         return cls(
             classifier=classifier,
+            result_classifier=config.result_classifier,
             strategy=config.default_strategy,
             strategies=config.class_strategies,
             deadline_s=config.deadline_s,
@@ -594,6 +767,8 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
     ) -> T:
         """
         Execute an async function with retries according to this policy.
+
+        Result-based failures raise RetryExhaustedError when retries stop.
         """
         state = _RetryState(
             policy=self,
@@ -605,11 +780,73 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
         for attempt in range(1, self.max_attempts + 1):
             try:
                 result = await func()
-                state.emit("success", attempt, 0.0)
-                return result
+                if self.result_classifier is None:
+                    state.emit("success", attempt, 0.0)
+                    return result
+
+                classification_result = self.result_classifier(result)
+                if classification_result is None:
+                    state.emit("success", attempt, 0.0)
+                    return result
+
+                classification = _normalize_classification(classification_result)
+                decision = state.handle_result(result, classification, attempt)
+                if decision.action == "raise":
+                    stop_reason = state.last_stop_reason or StopReason.MAX_ATTEMPTS_GLOBAL
+                    raise RetryExhaustedError(
+                        stop_reason=stop_reason,
+                        attempts=attempt,
+                        last_class=state.last_class,
+                        last_exception=None,
+                        last_result=state.last_result,
+                    )
+
+                await asyncio.sleep(decision.sleep_s)
+
+                if state.elapsed() > self.deadline:
+                    state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
+                    state.emit(
+                        "deadline_exceeded",
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        None,
+                        stop_reason=StopReason.DEADLINE_EXCEEDED,
+                        cause=state.last_cause,
+                    )
+                    stop_reason = state.last_stop_reason or StopReason.DEADLINE_EXCEEDED
+                    raise RetryExhaustedError(
+                        stop_reason=stop_reason,
+                        attempts=attempt,
+                        last_class=state.last_class,
+                        last_exception=None,
+                        last_result=state.last_result,
+                    )
+
+                if attempt == self.max_attempts:
+                    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+                    state.emit(
+                        "max_attempts_exceeded",
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        None,
+                        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                        cause=state.last_cause,
+                    )
+                    stop_reason = state.last_stop_reason or StopReason.MAX_ATTEMPTS_GLOBAL
+                    raise RetryExhaustedError(
+                        stop_reason=stop_reason,
+                        attempts=attempt,
+                        last_class=state.last_class,
+                        last_exception=None,
+                        last_result=state.last_result,
+                    )
             except asyncio.CancelledError:
                 raise
             except (KeyboardInterrupt, SystemExit):
+                raise
+            except RetryExhaustedError:
                 raise
             except Exception as exc:
                 decision = state.handle_exception(exc, attempt)
@@ -619,6 +856,7 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
                 await asyncio.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
+                    state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
                         "deadline_exceeded",
                         attempt,
@@ -626,10 +864,12 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
                         state.last_class,
                         state.last_exc,
                         stop_reason=StopReason.DEADLINE_EXCEEDED,
+                        cause=state.last_cause,
                     )
                     raise
 
                 if attempt == self.max_attempts:
+                    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
                         "max_attempts_exceeded",
                         attempt,
@@ -637,6 +877,7 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
                         state.last_class,
                         state.last_exc,
                         stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                        cause=state.last_cause,
                     )
                     raise
 
@@ -647,7 +888,17 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
             state.last_class,
             state.last_exc,
             stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+            cause=state.last_cause,
         )
+        state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+        if state.last_cause == "result":
+            raise RetryExhaustedError(
+                stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                attempts=self.max_attempts,
+                last_class=state.last_class,
+                last_exception=None,
+                last_result=state.last_result,
+            )
 
         if state.last_exc is not None and state.last_exc.__traceback__ is not None:
             raise state.last_exc.with_traceback(state.last_exc.__traceback__)
@@ -677,6 +928,7 @@ def retry(
     func: None = None,
     *,
     classifier: ClassifierFn = ...,
+    result_classifier: ResultClassifierFn | None = ...,
     strategy: StrategyFn | None = ...,
     strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
     deadline_s: float = ...,
@@ -694,6 +946,7 @@ def retry(
     func: Callable[P, T],
     *,
     classifier: ClassifierFn = ...,
+    result_classifier: ResultClassifierFn | None = ...,
     strategy: StrategyFn | None = ...,
     strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
     deadline_s: float = ...,
@@ -710,6 +963,7 @@ def retry(
     func: Callable[P, T] | None = None,
     *,
     classifier: ClassifierFn = default_classifier,
+    result_classifier: ResultClassifierFn | None = None,
     strategy: StrategyFn | None = None,
     strategies: Mapping[ErrorClass, StrategyFn] | None = None,
     deadline_s: float = 60.0,
@@ -729,7 +983,8 @@ def retry(
         def fetch_user() -> str:
             ...
 
-    Parameters mirror RetryPolicy/AsyncRetryPolicy. Hooks/operation can be set up-front.
+    Parameters mirror RetryPolicy/AsyncRetryPolicy (including result_classifier).
+    Hooks/operation can be set up-front.
 
     If neither `strategy` nor `strategies` is provided, a default
     decorrelated_jitter(max_s=5.0) strategy is injected.
@@ -746,6 +1001,7 @@ def retry(
         if asyncio.iscoroutinefunction(func):
             async_policy = AsyncRetryPolicy(
                 classifier=classifier,
+                result_classifier=result_classifier,
                 strategy=effective_strategy,
                 strategies=strategies,
                 deadline_s=deadline_s,
@@ -768,6 +1024,7 @@ def retry(
 
         policy = RetryPolicy(
             classifier=classifier,
+            result_classifier=result_classifier,
             strategy=effective_strategy,
             strategies=strategies,
             deadline_s=deadline_s,

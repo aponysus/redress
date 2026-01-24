@@ -21,6 +21,7 @@ class _ConfigView:
     per_class_max_attempts: Mapping[Any, int] | None
     default_strategy: StrategyFn | None
     class_strategies: Mapping[Any, StrategyFn] | None
+    result_classifier: object | None
 
 
 def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
@@ -33,6 +34,7 @@ def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
             per_class_max_attempts=obj.per_class_max_attempts,
             default_strategy=obj.default_strategy,
             class_strategies=obj.class_strategies,
+            result_classifier=obj.result_classifier,
         )
 
     if isinstance(obj, RetryPolicy | AsyncRetryPolicy):
@@ -44,6 +46,7 @@ def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
             per_class_max_attempts=obj.per_class_max_attempts,
             default_strategy=obj._default_strategy,
             class_strategies=obj._strategies,
+            result_classifier=obj.result_classifier,
         )
 
     raise TypeError(
@@ -88,6 +91,9 @@ def _lint_config_view(cfg: _ConfigView) -> tuple[list[str], list[str]]:
                     f"[{cfg.source}] strategy for {getattr(klass, 'name', klass)!r} "
                     f"is not callable."
                 )
+
+    if cfg.result_classifier is not None and not callable(cfg.result_classifier):
+        errors.append(f"[{cfg.source}] result_classifier must be callable.")
 
     if cfg.per_class_max_attempts:
         for klass, limit in cfg.per_class_max_attempts.items():
