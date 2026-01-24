@@ -31,6 +31,7 @@ def test_retry_policy_attribute_forwarding_and_readonly() -> None:
     with pytest.raises(AttributeError):
         policy.policy = None  # type: ignore[assignment]
 
+
 def test_async_retry_policy_attribute_forwarding_and_readonly() -> None:
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
@@ -50,6 +51,7 @@ def test_async_retry_policy_attribute_forwarding_and_readonly() -> None:
         policy.retry = None  # type: ignore[assignment]
     with pytest.raises(AttributeError):
         policy.policy = None  # type: ignore[assignment]
+
 
 def test_async_retry_policy_from_config() -> None:
     cfg = RetryConfig(deadline_s=5.0, max_attempts=2, default_strategy=_no_sleep_strategy)
