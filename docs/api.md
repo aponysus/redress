@@ -11,6 +11,10 @@
   - `.call(...)`, `.context(...)`, `.from_config(config, classifier=...)`
 - `RetryPolicy`, `AsyncRetryPolicy`
   - Backward-compatible sugar for `Policy(retry=Retry(...))`
+- `CircuitBreaker`
+  - State machine with open/half-open/closed transitions
+  - Use with `Policy(circuit_breaker=...)`
+- `CircuitState` enum
 
 ## Decorator
 
@@ -37,6 +41,7 @@
 ## Errors
 
 - `ErrorClass` enum
+- `CircuitOpenError` fail-fast error when breaker is open
 - `StopReason` enum
 - `RetryExhaustedError` terminal error (result-based exhaustion)
 - Marker exceptions: `PermanentError`, `RateLimitError`, `ConcurrencyError`

@@ -19,6 +19,30 @@ policy = Policy(
 )
 ```
 
+## Circuit breakers
+
+Use `CircuitBreaker` with the unified policy to fail fast when a downstream is unhealthy.
+
+```python
+from redress import CircuitBreaker, ErrorClass, Policy, Retry, default_classifier
+from redress.strategies import decorrelated_jitter
+
+breaker = CircuitBreaker(
+    failure_threshold=5,
+    window_s=60.0,
+    recovery_timeout_s=30.0,
+    trip_on={ErrorClass.TRANSIENT, ErrorClass.SERVER_ERROR},
+)
+
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),
+    ),
+    circuit_breaker=breaker,
+)
+```
+
 ## Per-class strategies and limits
 
 ```python

@@ -16,8 +16,13 @@ Hook failures are swallowed so they never break the workload; log adapter errors
 - `max_attempts_exceeded` – global or per-class cap reached
 - `max_unknown_attempts_exceeded` – UNKNOWN-specific cap reached
 - `no_strategy_configured` – missing strategy for a retryable class
+- `circuit_opened` – circuit breaker transitions to open
+- `circuit_half_open` – circuit breaker transitions to half-open
+- `circuit_closed` – circuit breaker transitions to closed
+- `circuit_rejected` – breaker rejected a call
 
 Attempts are 1-based. `sleep_s` is the scheduled delay for retries, otherwise 0.0.
+Breaker events use `attempt=0` and `sleep_s=0.0`.
 For result-driven failures, `err` is omitted and `cause="result"` is included.
 
 ## Stop reasons (terminal only)
@@ -39,6 +44,7 @@ Terminal events carry a stable `stop_reason` tag with a small, fixed set:
 - `err` – exception class name when available
 - `stop_reason` – terminal reason for stop events only
 - `cause` – `"exception"` or `"result"` when a failure triggers retries/stops
+- `state` – circuit breaker state (`closed`, `open`, `half_open`) on breaker events
 
 Avoid payloads or sensitive fields in tags; stick to identifiers.
 

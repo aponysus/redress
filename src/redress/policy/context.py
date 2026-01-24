@@ -1,6 +1,6 @@
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from typing import Any, Literal, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from .types import LogHook, MetricHook, T
 

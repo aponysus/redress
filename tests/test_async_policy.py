@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from redress.circuit import CircuitBreaker, CircuitState
 from redress.classify import Classification, default_classifier
 from redress.errors import (
     ErrorClass,
@@ -563,3 +564,96 @@ def test_async_policy_matches_async_retry_policy(
     assert result_a == result_b == "ok"
     assert calls_a["n"] == calls_b["n"] == 2
     assert events_a == events_b
+
+
+def test_async_policy_breaker_rejects_when_open(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"n": 0}
+
+    async def func() -> None:
+        calls["n"] += 1
+        raise RateLimitError("429")
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", noop_sleep)
+
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=60.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    policy = AsyncPolicy(
+        retry=AsyncRetry(
+            classifier=lambda exc: ErrorClass.TRANSIENT,
+            strategy=_no_sleep_strategy,
+            max_attempts=1,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    with pytest.raises(RateLimitError):
+        asyncio.run(policy.call(func))
+
+    assert calls["n"] == 1
+
+
+def test_async_policy_breaker_cancelled_records(monkeypatch: pytest.MonkeyPatch) -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    called = {"n": 0}
+    original = breaker.record_cancel
+
+    def record_cancel() -> None:
+        called["n"] += 1
+        original()
+
+    breaker.record_cancel = record_cancel  # type: ignore[assignment]
+
+    policy = AsyncPolicy(
+        retry=AsyncRetry(
+            classifier=lambda exc: ErrorClass.TRANSIENT,
+            strategy=_no_sleep_strategy,
+            max_attempts=1,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    async def cancelled() -> None:
+        raise asyncio.CancelledError()
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(policy.call(cancelled))
+
+    assert called["n"] == 1
+
+
+def test_async_policy_breaker_without_retry_uses_default_classifier() -> None:
+    class WeirdError(Exception):
+        pass
+
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+
+    policy = AsyncPolicy(circuit_breaker=breaker)
+
+    async def fail() -> None:
+        raise WeirdError("boom")
+
+    with pytest.raises(WeirdError):
+        asyncio.run(policy.call(fail))
+
+    assert breaker.state is CircuitState.OPEN

@@ -44,6 +44,16 @@ class RetryExhaustedError(Exception):
         return f"Retry stopped: {self.stop_reason.value}"
 
 
+class CircuitOpenError(Exception):
+    """
+    Raised when a circuit breaker rejects a call.
+    """
+
+    def __init__(self, state: str = "open") -> None:
+        self.state = state
+        super().__init__(f"Circuit is {state}.")
+
+
 class PermanentError(Exception):
     """Explicit marker that this error should not be retried."""
 

@@ -52,7 +52,7 @@ result = policy.call(lambda: do_work(), operation="sync_task")
 
 ## What’s inside
 
-- **API highlights:** `Policy` / `Retry`, `RetryPolicy` / `AsyncRetryPolicy`, `@retry`, classifiers (`default`, `http_classifier`, `sqlstate_classifier`, `pyodbc_classifier`), strategies (`decorrelated_jitter`, `equal_jitter`, `token_backoff`), hooks (`on_metric`, `on_log`), context manager reuse.
+- **API highlights:** `Policy` / `Retry`, `CircuitBreaker`, `RetryPolicy` / `AsyncRetryPolicy`, `@retry`, classifiers (`default`, `http_classifier`, `sqlstate_classifier`, `pyodbc_classifier`), strategies (`decorrelated_jitter`, `equal_jitter`, `token_backoff`), hooks (`on_metric`, `on_log`), context manager reuse.
 - **Use cases:** HTTP 429/5xx, DB deadlocks/SQLSTATE 40001, queue/worker retries, third-party API calls, async services.
 - **Production pointers:** Set `deadline_s` and `max_attempts`, cap `max_unknown_attempts`, keep tags low-cardinality (`class`, `operation`, `err`), attach metrics/log hooks.
 

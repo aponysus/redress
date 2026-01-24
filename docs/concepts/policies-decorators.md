@@ -23,6 +23,22 @@ result = policy.call(lambda: do_work(), operation="sync_op")
 
 Async mirrors the same API and uses `asyncio.sleep` under the hood.
 
+You can add a circuit breaker at the policy level:
+
+```python
+from redress import CircuitBreaker, ErrorClass, Policy, Retry
+
+policy = Policy(
+    retry=Retry(...),
+    circuit_breaker=CircuitBreaker(
+        failure_threshold=5,
+        window_s=60.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.TRANSIENT, ErrorClass.SERVER_ERROR},
+    ),
+)
+```
+
 Context managers let you reuse hooks/operation:
 
 ```python

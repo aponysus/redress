@@ -1,7 +1,7 @@
 import asyncio
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, cast
+from typing import Any
 
 from ..config import ResultClassifierFn, RetryConfig
 from ..errors import ErrorClass, RetryExhaustedError, StopReason

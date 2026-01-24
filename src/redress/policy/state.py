@@ -1,5 +1,6 @@
 import collections
 import math
+import time
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Literal
@@ -8,7 +9,6 @@ from ..classify import Classification
 from ..errors import ErrorClass, StopReason
 from ..strategies import BackoffContext
 from .base import _BaseRetryPolicy, _normalize_classification
-import time
 from .types import FailureCause, LogHook, MetricHook
 
 

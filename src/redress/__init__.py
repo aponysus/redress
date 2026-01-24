@@ -1,7 +1,9 @@
+from .circuit import CircuitBreaker, CircuitState
 from .classify import Classification, default_classifier, strict_classifier
 from .config import RetryConfig
 from .contrib.pyodbc import pyodbc_classifier
 from .errors import (
+    CircuitOpenError,
     ConcurrencyError,
     ErrorClass,
     PermanentError,
@@ -37,7 +39,10 @@ __all__ = [
     "Policy",
     "Retry",
     "RetryConfig",
+    "CircuitBreaker",
+    "CircuitState",
     "ErrorClass",
+    "CircuitOpenError",
     "StopReason",
     "PermanentError",
     "RateLimitError",

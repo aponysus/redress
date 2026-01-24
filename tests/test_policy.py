@@ -7,9 +7,11 @@ from typing import Any
 
 import pytest
 
+from redress.circuit import CircuitBreaker, CircuitState
 from redress.classify import Classification, default_classifier
 from redress.config import RetryConfig
 from redress.errors import (
+    CircuitOpenError,
     ErrorClass,
     PermanentError,
     RateLimitError,
@@ -1327,3 +1329,210 @@ def test_policy_matches_retry_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result_a == result_b == "ok"
     assert calls_a["n"] == calls_b["n"] == 2
     assert events_a == events_b
+
+
+def test_policy_breaker_counts_once_per_operation(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def func() -> None:
+        calls["n"] += 1
+        raise RateLimitError("429")
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
+
+    breaker = CircuitBreaker(
+        failure_threshold=2,
+        window_s=60.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    policy = Policy(
+        retry=Retry(
+            classifier=lambda exc: ErrorClass.TRANSIENT,
+            strategy=_no_sleep_strategy,
+            max_attempts=2,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    events: list[str] = []
+
+    def metric(event: str, attempt: int, sleep_s: float, tags: dict[str, Any]) -> None:
+        if event.startswith("circuit_"):
+            events.append(event)
+
+    with pytest.raises(RateLimitError):
+        policy.call(func, on_metric=metric)
+
+    assert breaker.state is CircuitState.CLOSED
+
+    with pytest.raises(RateLimitError):
+        policy.call(func, on_metric=metric)
+
+    assert breaker.state is CircuitState.OPEN
+    assert events.count("circuit_opened") == 1
+
+
+def test_policy_breaker_rejects_when_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def func() -> None:
+        calls["n"] += 1
+        raise RateLimitError("429")
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
+
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=60.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    policy = Policy(
+        retry=Retry(
+            classifier=lambda exc: ErrorClass.TRANSIENT,
+            strategy=_no_sleep_strategy,
+            max_attempts=1,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    events: list[str] = []
+
+    def metric(event: str, attempt: int, sleep_s: float, tags: dict[str, Any]) -> None:
+        if event.startswith("circuit_"):
+            events.append(event)
+
+    with pytest.raises(RateLimitError):
+        policy.call(func, on_metric=metric)
+
+    assert calls["n"] == 1
+    assert breaker.state is CircuitState.OPEN
+
+    with pytest.raises(CircuitOpenError):
+        policy.call(func, on_metric=metric)
+
+    assert calls["n"] == 1
+    assert "circuit_opened" in events
+    assert "circuit_rejected" in events
+
+
+def test_policy_breaker_emits_transition_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_time = _FakeTime()
+
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=2.0,
+        trip_on={ErrorClass.TRANSIENT},
+        clock=fake_time.monotonic,
+    )
+
+    policy = Policy(
+        retry=Retry(
+            classifier=lambda exc: ErrorClass.TRANSIENT,
+            strategy=_no_sleep_strategy,
+            max_attempts=1,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    events: list[tuple[str, dict[str, Any]]] = []
+
+    def metric(event: str, attempt: int, sleep_s: float, tags: dict[str, Any]) -> None:
+        if event.startswith("circuit_"):
+            events.append((event, tags))
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
+
+    def fail() -> None:
+        raise RateLimitError("429")
+
+    with pytest.raises(RateLimitError):
+        policy.call(fail, on_metric=metric, operation="op")
+
+    fake_time.advance(2.1)
+
+    def succeed() -> str:
+        return "ok"
+
+    assert policy.call(succeed, on_metric=metric, operation="op") == "ok"
+
+    names = [event for event, _ in events]
+    assert "circuit_opened" in names
+    assert "circuit_half_open" in names
+    assert "circuit_closed" in names
+
+    opened_tags = next(tags for event, tags in events if event == "circuit_opened")
+    assert opened_tags["class"] == ErrorClass.TRANSIENT.name
+    assert opened_tags["operation"] == "op"
+    assert opened_tags["state"] == "open"
+
+
+def test_policy_breaker_uses_default_classifier_without_retry() -> None:
+    class WeirdError(Exception):
+        pass
+
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+
+    policy = Policy(circuit_breaker=breaker)
+
+    def fail() -> None:
+        raise WeirdError("boom")
+
+    with pytest.raises(WeirdError):
+        policy.call(fail)
+
+    assert breaker.state is CircuitState.OPEN
+
+
+def test_policy_breaker_records_result_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    policy = Policy(
+        retry=Retry(
+            classifier=default_classifier,
+            result_classifier=lambda result: ErrorClass.TRANSIENT,
+            strategy=_no_sleep_strategy,
+            max_attempts=1,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
+
+    with pytest.raises(RetryExhaustedError):
+        policy.call(lambda: "bad")
+
+    assert breaker.state is CircuitState.OPEN
+
+
+def test_policy_breaker_ignores_circuit_open_error() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    policy = Policy(circuit_breaker=breaker)
+
+    def fail() -> None:
+        raise CircuitOpenError("open")
+
+    with pytest.raises(CircuitOpenError):
+        policy.call(fail)
+
+    assert breaker.state is CircuitState.CLOSED
