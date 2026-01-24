@@ -34,6 +34,7 @@ nav:
       - Safety and resilience: safety-resilience.md
       - Design notes: design_notes.md
   - Usage: usage.md
+  - Reference flows: reference-flows.md
   - Examples: examples/index.md
   - API reference: api.md
   - Roadmap: roadmap-public.md
