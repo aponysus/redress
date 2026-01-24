@@ -26,6 +26,7 @@
 - `decorrelated_jitter`
 - `equal_jitter`
 - `token_backoff`
+- `retry_after_or`
 - `BackoffContext` for context-aware strategy functions
 
 ## Errors

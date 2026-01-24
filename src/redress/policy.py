@@ -1,7 +1,6 @@
 import asyncio
 import collections
 import functools
-import inspect
 import math
 import time
 from collections.abc import Awaitable, Callable, Mapping
@@ -15,9 +14,8 @@ from .errors import ErrorClass, StopReason
 from .strategies import (
     BackoffContext,
     BackoffFn,
-    ContextStrategyFn,
-    LegacyStrategyFn,
     StrategyFn,
+    _normalize_strategy,
     decorrelated_jitter,
 )
 
@@ -90,41 +88,6 @@ def _build_backoff_context(
         remaining_s=remaining_s,
         cause=cause,
     )
-
-
-def _normalize_strategy(strategy: StrategyFn) -> BackoffFn:
-    try:
-        signature = inspect.signature(strategy)
-    except (TypeError, ValueError) as exc:
-        raise TypeError("Strategy must accept (ctx) or (attempt, klass, prev_sleep_s)") from exc
-
-    required_positional = [
-        p
-        for p in signature.parameters.values()
-        if p.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
-        and p.default is inspect.Parameter.empty
-    ]
-    required_kwonly = [
-        p
-        for p in signature.parameters.values()
-        if p.kind is inspect.Parameter.KEYWORD_ONLY and p.default is inspect.Parameter.empty
-    ]
-
-    if required_kwonly:
-        raise TypeError("Strategy must accept (ctx) or (attempt, klass, prev_sleep_s)")
-
-    if len(required_positional) == 1:
-        return cast(ContextStrategyFn, strategy)
-
-    if len(required_positional) == 3:
-        legacy = cast(LegacyStrategyFn, strategy)
-
-        def wrapped(ctx: BackoffContext) -> float:
-            return legacy(ctx.attempt, ctx.klass, ctx.prev_sleep_s)
-
-        return wrapped
-
-    raise TypeError("Strategy must accept (ctx) or (attempt, klass, prev_sleep_s)")
 
 
 class _RetryState:

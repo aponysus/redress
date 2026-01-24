@@ -178,6 +178,7 @@ Built‑ins:
 - `decorrelated_jitter()`
 - `equal_jitter()`
 - `token_backoff()`
+- `retry_after_or(...)`
 
 ## Per-Class Example
 

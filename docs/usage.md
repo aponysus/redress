@@ -37,14 +37,11 @@ strategies receive a `BackoffContext`.
 ```python
 from redress import RetryPolicy
 from redress.extras import http_retry_after_classifier
-from redress.strategies import BackoffContext
-
-def strategy(ctx: BackoffContext) -> float:
-    return float(ctx.classification.retry_after_s or 0.0)
+from redress.strategies import decorrelated_jitter, retry_after_or
 
 policy = RetryPolicy(
     classifier=http_retry_after_classifier,
-    strategy=strategy,
+    strategy=retry_after_or(decorrelated_jitter(max_s=10.0)),
 )
 ```
 

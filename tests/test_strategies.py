@@ -7,8 +7,15 @@ import hypothesis.strategies as st
 from hypothesis import given
 
 import redress.strategies as strategies
+from redress.classify import Classification
 from redress.errors import ErrorClass
-from redress.strategies import decorrelated_jitter, equal_jitter, token_backoff
+from redress.strategies import (
+    BackoffContext,
+    decorrelated_jitter,
+    equal_jitter,
+    retry_after_or,
+    token_backoff,
+)
 
 
 def test_decorrelated_jitter_bounds() -> None:
@@ -99,3 +106,80 @@ def test_token_backoff_property(base_s: float, max_s: float, attempt: int) -> No
         assert cap / 2.0 <= sleep_s <= cap
     finally:
         strategies.random.uniform = original_uniform
+
+
+def test_retry_after_or_uses_retry_after() -> None:
+    calls = {"n": 0}
+
+    def fallback(attempt: int, klass: ErrorClass, prev_sleep: float | None) -> float:
+        calls["n"] += 1
+        return 1.0
+
+    strat = retry_after_or(fallback, jitter_s=0.0)
+    ctx = BackoffContext(
+        attempt=1,
+        classification=Classification(klass=ErrorClass.RATE_LIMIT, retry_after_s=2.0),
+        prev_sleep_s=None,
+        remaining_s=10.0,
+        cause="exception",
+    )
+    assert strat(ctx) == 2.0
+    assert calls["n"] == 0
+
+
+def test_retry_after_or_falls_back() -> None:
+    calls = {"n": 0}
+
+    def fallback(attempt: int, klass: ErrorClass, prev_sleep: float | None) -> float:
+        calls["n"] += 1
+        return 1.5
+
+    strat = retry_after_or(fallback, jitter_s=0.0)
+    ctx = BackoffContext(
+        attempt=1,
+        classification=Classification(klass=ErrorClass.TRANSIENT),
+        prev_sleep_s=None,
+        remaining_s=10.0,
+        cause="exception",
+    )
+    assert strat(ctx) == 1.5
+    assert calls["n"] == 1
+
+
+def test_retry_after_or_clamps_remaining() -> None:
+    def fallback(attempt: int, klass: ErrorClass, prev_sleep: float | None) -> float:
+        return 10.0
+
+    strat = retry_after_or(fallback, jitter_s=0.0)
+    ctx = BackoffContext(
+        attempt=1,
+        classification=Classification(klass=ErrorClass.RATE_LIMIT, retry_after_s=5.0),
+        prev_sleep_s=None,
+        remaining_s=1.0,
+        cause="exception",
+    )
+    assert strat(ctx) == 1.0
+
+    ctx_fallback = BackoffContext(
+        attempt=1,
+        classification=Classification(klass=ErrorClass.TRANSIENT),
+        prev_sleep_s=None,
+        remaining_s=0.5,
+        cause="exception",
+    )
+    assert strat(ctx_fallback) == 0.5
+
+
+def test_retry_after_or_works_with_result_cause() -> None:
+    def fallback(attempt: int, klass: ErrorClass, prev_sleep: float | None) -> float:
+        return 1.0
+
+    strat = retry_after_or(fallback, jitter_s=0.0)
+    ctx = BackoffContext(
+        attempt=1,
+        classification=Classification(klass=ErrorClass.RATE_LIMIT, retry_after_s=2.0),
+        prev_sleep_s=None,
+        remaining_s=10.0,
+        cause="result",
+    )
+    assert strat(ctx) == 2.0
