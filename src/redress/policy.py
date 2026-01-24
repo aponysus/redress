@@ -680,6 +680,7 @@ def retry(
 
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         op_name = operation or getattr(func, "__name__", None)
+        effective_strategy: StrategyFn | None
         if strategy is None and strategies is None:
             effective_strategy = decorrelated_jitter(max_s=5.0)
         else:
