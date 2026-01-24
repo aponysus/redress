@@ -115,13 +115,14 @@ policy = RetryPolicy(
 )
 ```
 
-All strategies share the same function signature:
+Strategies support two signatures:
 
 ```
-(attempt, error_class, prev_sleep) -> float
+(ctx: BackoffContext) -> float
 ```
 
-Built-ins include `decorrelated_jitter`, `equal_jitter`, and `token_backoff`.
+Legacy `(attempt, error_class, prev_sleep)` strategies still work. Built-ins include
+`decorrelated_jitter`, `equal_jitter`, and `token_backoff`.
 
 ---
 

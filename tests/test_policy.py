@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from redress.classify import default_classifier
+from redress.classify import Classification, default_classifier
 from redress.config import RetryConfig
 from redress.errors import (
     ErrorClass,
@@ -15,7 +15,7 @@ from redress.errors import (
     StopReason,
 )
 from redress.policy import MetricHook, RetryPolicy
-from redress.strategies import decorrelated_jitter
+from redress.strategies import BackoffContext, decorrelated_jitter
 
 
 class _FakeTime:
@@ -200,6 +200,153 @@ def test_permission_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     assert tags["err"] == "ForbiddenError"
 
 
+def test_context_strategy_receives_classification_from_error_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class TransientError(Exception):
+        pass
+
+    calls = {"n": 0}
+    sleep_calls: list[float] = []
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TransientError("boom")
+        return "ok"
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def strategy(ctx: BackoffContext) -> float:
+        assert ctx.classification.klass is ErrorClass.TRANSIENT
+        assert ctx.classification.retry_after_s is None
+        assert ctx.classification.details == {}
+        assert ctx.cause == "exception"
+        return 0.0
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: sleep_calls.append(s))
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=strategy,
+        deadline_s=30.0,
+        max_attempts=3,
+    )
+
+    assert policy.call(func) == "ok"
+    assert calls["n"] == 2
+    assert sleep_calls == [0.0]
+
+
+def test_context_strategy_receives_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
+    class RateLimitError(Exception):
+        pass
+
+    calls = {"n": 0}
+    sleep_calls: list[float] = []
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RateLimitError("429")
+        return "ok"
+
+    def classifier(_: BaseException) -> Classification:
+        return Classification(
+            klass=ErrorClass.RATE_LIMIT,
+            retry_after_s=0.5,
+            details={"source": "header"},
+        )
+
+    def strategy(ctx: BackoffContext) -> float:
+        assert ctx.classification.retry_after_s == 0.5
+        assert ctx.classification.details == {"source": "header"}
+        return float(ctx.classification.retry_after_s or 0.0)
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: sleep_calls.append(s))
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=strategy,
+        deadline_s=30.0,
+        max_attempts=3,
+    )
+
+    assert policy.call(func) == "ok"
+    assert calls["n"] == 2
+    assert sleep_calls == [0.5]
+
+
+def test_legacy_strategy_wrapped_for_classification(monkeypatch: pytest.MonkeyPatch) -> None:
+    class TransientError(Exception):
+        pass
+
+    calls = {"n": 0}
+    sleep_calls: list[float] = []
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise TransientError("boom")
+        return "ok"
+
+    def classifier(_: BaseException) -> Classification:
+        return Classification(klass=ErrorClass.TRANSIENT, retry_after_s=0.25)
+
+    def strategy(attempt: int, klass: ErrorClass, prev_sleep: float | None) -> float:
+        assert klass is ErrorClass.TRANSIENT
+        return 0.0
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: sleep_calls.append(s))
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=strategy,
+        deadline_s=30.0,
+        max_attempts=3,
+    )
+
+    assert policy.call(func) == "ok"
+    assert calls["n"] == 2
+    assert sleep_calls == [0.0]
+
+
+@pytest.mark.parametrize("value", [-1.0, float("nan"), float("inf"), -float("inf")])
+def test_strategy_invalid_sleep_is_clamped(monkeypatch: pytest.MonkeyPatch, value: float) -> None:
+    class TransientError(Exception):
+        pass
+
+    sleep_calls: list[float] = []
+
+    def func() -> None:
+        raise TransientError("boom")
+
+    metric_hook, events = _collect_metrics()
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def strategy(ctx: BackoffContext) -> float:
+        return value
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: sleep_calls.append(s))
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=strategy,
+        deadline_s=10.0,
+        max_attempts=2,
+    )
+
+    with pytest.raises(TransientError):
+        policy.call(func, on_metric=metric_hook)
+
+    assert sleep_calls and all(call == 0.0 for call in sleep_calls)
+    retry_events = [e for e in events if e[0] == "retry"]
+    assert retry_events and all(event[2] == 0.0 for event in retry_events)
+
+
 def test_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     class TransientError(Exception):
         pass
@@ -232,7 +379,7 @@ def test_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None
     assert events and events[0][0] == "no_strategy_configured"
     assert events[0][3]["class"] == ErrorClass.TRANSIENT.name
     assert events[0][3]["err"] == "TransientError"
-    assert events[0][3]["stop_reason"] == StopReason.NON_RETRYABLE_CLASS.value
+    assert events[0][3]["stop_reason"] == StopReason.NO_STRATEGY.value
 
 
 def test_keyboard_interrupt_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -466,6 +613,44 @@ def test_log_hook_receives_events(monkeypatch: pytest.MonkeyPatch) -> None:
     assert retry_fields["sleep_s"] == 0.0
 
 
+def test_retry_after_logged_only_on_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    class RateLimitError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    def func() -> None:
+        calls["n"] += 1
+        raise RateLimitError("429")
+
+    log_hook, log_events = _collect_logs()
+    metric_hook, metric_events = _collect_metrics()
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    def classifier(_: BaseException) -> Classification:
+        return Classification(klass=ErrorClass.RATE_LIMIT, retry_after_s=1.5)
+
+    def strategy(ctx: BackoffContext) -> float:
+        return float(ctx.classification.retry_after_s or 0.0)
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=strategy,
+        deadline_s=10.0,
+        max_attempts=2,
+    )
+
+    with pytest.raises(RateLimitError):
+        policy.call(func, on_metric=metric_hook, on_log=log_hook)
+
+    retry_log = next(e for e in log_events if e[0] == "retry")
+    assert retry_log[1]["retry_after_s"] == 1.5
+
+    retry_metric = next(e for e in metric_events if e[0] == "retry")
+    assert "retry_after_s" not in retry_metric[3]
+
+
 def test_hooks_are_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     Hook exceptions should not break workload execution.
@@ -567,9 +752,32 @@ def test_retry_policy_from_config_creates_equivalent_policy() -> None:
     assert policy.max_attempts == cfg.max_attempts
     assert policy.max_unknown_attempts == cfg.max_unknown_attempts
     assert policy.per_class_max_attempts[ErrorClass.RATE_LIMIT] == 2
-    # Strategy lookup should match what we provided
-    assert policy._default_strategy is _no_sleep_strategy
-    assert policy._strategies[ErrorClass.CONCURRENCY] is _no_sleep_strategy
+    # Strategy lookup should invoke the configured strategies.
+    assert policy._default_strategy is not None
+    assert (
+        policy._default_strategy(
+            BackoffContext(
+                attempt=1,
+                classification=Classification(klass=ErrorClass.UNKNOWN),
+                prev_sleep_s=None,
+                remaining_s=10.0,
+                cause="exception",
+            )
+        )
+        == 0.0
+    )
+    assert (
+        policy._strategies[ErrorClass.CONCURRENCY](
+            BackoffContext(
+                attempt=1,
+                classification=Classification(klass=ErrorClass.CONCURRENCY),
+                prev_sleep_s=None,
+                remaining_s=10.0,
+                cause="exception",
+            )
+        )
+        == 0.0
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -772,9 +980,13 @@ def test_deadline_sleep_is_capped_and_rechecked(monkeypatch: pytest.MonkeyPatch)
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
 
+    def strategy(ctx: BackoffContext) -> float:
+        assert ctx.remaining_s == pytest.approx(0.8)
+        return 10.0  # would sleep long without capping
+
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=lambda attempt, klass, prev: 10.0,  # would sleep long without capping
+        strategy=strategy,
         deadline_s=1.0,
         max_attempts=5,
     )

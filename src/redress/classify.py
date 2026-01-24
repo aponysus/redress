@@ -1,3 +1,6 @@
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+
 from .errors import (
     ConcurrencyError,
     ErrorClass,
@@ -5,6 +8,13 @@ from .errors import (
     RateLimitError,
     ServerError,
 )
+
+
+@dataclass(frozen=True)
+class Classification:
+    klass: ErrorClass
+    retry_after_s: float | None = None
+    details: Mapping[str, str] = field(default_factory=dict)
 
 
 def _classify(err: BaseException, *, use_name_heuristics: bool) -> ErrorClass:

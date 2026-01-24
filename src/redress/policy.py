@@ -1,18 +1,25 @@
 import asyncio
 import collections
 import functools
+import math
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
 from typing import Any, Literal, ParamSpec, TypeVar, cast, overload
 
-from .classify import default_classifier
+from .classify import Classification, default_classifier
 from .config import RetryConfig
 from .errors import ErrorClass, StopReason
-from .strategies import StrategyFn, decorrelated_jitter
+from .strategies import (
+    BackoffContext,
+    BackoffFn,
+    StrategyFn,
+    _normalize_strategy,
+    decorrelated_jitter,
+)
 
-ClassifierFn = Callable[[BaseException], ErrorClass]
+ClassifierFn = Callable[[BaseException], ErrorClass | Classification]
 MetricHook = Callable[[str, int, float, dict[str, Any]], None]
 LogHook = Callable[[str, dict[str, Any]], None]
 P = ParamSpec("P")
@@ -38,14 +45,18 @@ class _BaseRetryPolicy:
             )
 
         self.classifier: ClassifierFn = classifier
-        self._strategies: dict[ErrorClass, StrategyFn] = dict(strategies or {})
-        self._default_strategy: StrategyFn | None = strategy
+        self._strategies: dict[ErrorClass, BackoffFn] = {
+            klass: _normalize_strategy(fn) for klass, fn in (strategies or {}).items()
+        }
+        self._default_strategy: BackoffFn | None = (
+            _normalize_strategy(strategy) if strategy is not None else None
+        )
         self.deadline: timedelta = timedelta(seconds=deadline_s)
         self.max_attempts: int = max_attempts
         self.max_unknown_attempts: int | None = max_unknown_attempts
         self.per_class_max_attempts: dict[ErrorClass, int] = dict(per_class_max_attempts or {})
 
-    def _select_strategy(self, klass: ErrorClass) -> StrategyFn | None:
+    def _select_strategy(self, klass: ErrorClass) -> BackoffFn | None:
         return self._strategies.get(klass, self._default_strategy)
 
 
@@ -53,6 +64,30 @@ class _BaseRetryPolicy:
 class _RetryDecision:
     action: Literal["retry", "raise"]
     sleep_s: float = 0.0
+
+
+def _normalize_classification(result: ErrorClass | Classification) -> Classification:
+    if isinstance(result, Classification):
+        return result
+    return Classification(klass=result)
+
+
+def _build_backoff_context(
+    *,
+    attempt: int,
+    classification: Classification,
+    prev_sleep_s: float | None,
+    remaining_s: float | None,
+    cause: Literal["exception", "result"],
+) -> BackoffContext:
+    # Centralized so result-based retries can switch cause to "result" later.
+    return BackoffContext(
+        attempt=attempt,
+        classification=classification,
+        prev_sleep_s=prev_sleep_s,
+        remaining_s=remaining_s,
+        cause=cause,
+    )
 
 
 class _RetryState:
@@ -90,6 +125,7 @@ class _RetryState:
         klass: ErrorClass | None = None,
         exc: BaseException | None = None,
         stop_reason: StopReason | None = None,
+        classification: Classification | None = None,
     ) -> None:
         tags: dict[str, Any] = {}
 
@@ -113,6 +149,12 @@ class _RetryState:
 
         if self.on_log is not None:
             fields = {"attempt": attempt, "sleep_s": sleep_s, **tags}
+            if (
+                event == "retry"
+                and classification is not None
+                and classification.retry_after_s is not None
+            ):
+                fields["retry_after_s"] = classification.retry_after_s
             try:
                 self.on_log(event, fields)
             except Exception:
@@ -123,7 +165,8 @@ class _RetryState:
         Process an exception and return a retry/raise decision.
         """
         self.last_exc = exc
-        klass = self.policy.classifier(exc)
+        classification = _normalize_classification(self.policy.classifier(exc))
+        klass = classification.klass
         self.last_class = klass
         self.per_class_counts[klass] += 1
 
@@ -185,13 +228,13 @@ class _RetryState:
                 0.0,
                 klass,
                 exc,
-                stop_reason=StopReason.NON_RETRYABLE_CLASS,
+                stop_reason=StopReason.NO_STRATEGY,
             )
             return _RetryDecision("raise")
-        sleep_s = strategy(attempt, klass, self.prev_sleep)
 
         remaining = self.policy.deadline - self.elapsed()
-        if remaining.total_seconds() <= 0:
+        remaining_s = remaining.total_seconds()
+        if remaining_s <= 0:
             self.emit(
                 "deadline_exceeded",
                 attempt,
@@ -202,9 +245,22 @@ class _RetryState:
             )
             return _RetryDecision("raise")
 
-        sleep_s = min(sleep_s, remaining.total_seconds())
+        ctx = _build_backoff_context(
+            attempt=attempt,
+            classification=classification,
+            prev_sleep_s=self.prev_sleep,
+            remaining_s=remaining_s,
+            cause="exception",
+        )
+        sleep_s = strategy(ctx)
+
+        if not math.isfinite(sleep_s):
+            sleep_s = 0.0
+
+        sleep_s = max(0.0, sleep_s)
+        sleep_s = min(sleep_s, remaining_s)
         self.prev_sleep = sleep_s
-        self.emit("retry", attempt, sleep_s, klass, exc)
+        self.emit("retry", attempt, sleep_s, klass, exc, classification=classification)
         return _RetryDecision("retry", sleep_s)
 
 
@@ -266,7 +322,7 @@ class RetryPolicy(_BaseRetryPolicy):
     Parameters
     ----------
     classifier:
-        Function mapping an exception to an ErrorClass.
+        Function mapping an exception to an ErrorClass or a Classification.
 
     strategy:
         Optional default backoff strategy to use for *all* error classes
@@ -280,9 +336,10 @@ class RetryPolicy(_BaseRetryPolicy):
             )
 
     strategies:
-        Optional mapping from ErrorClass -> StrategyFn. This is the
-        class-based strategy registry. If provided, it overrides `strategy`
-        for those specific classes.
+        Optional mapping from ErrorClass -> StrategyFn. Strategies may use the
+        legacy `(attempt, klass, prev_sleep_s)` signature or the context-aware
+        `(ctx: BackoffContext)` signature. If provided, per-class strategies
+        override `strategy` for those specific classes.
 
         Example:
 

@@ -133,18 +133,22 @@ UNKNOWN
 Redress intentionally keeps `ErrorClass` small and fixed. The goal is semantic
 classification ("rate limit" vs. "server error") rather than mechanical mapping to
 every exception type. If you need finer-grained behavior, use separate policies per
-use case. Future versions may add optional classification context (for example,
-Retry-After hints) without expanding the class set.
+use case. Optional classification context can carry hints (for example, Retry-After)
+without expanding the class set.
 
 Classification rules:
 
 - Explicit redress error types  
 - Numeric codes (`err.status` or `err.code`)  
 - Name heuristics  
+- Fallback to UNKNOWN  
 
 Name heuristics are a convenience for quick starts; for production, prefer a domain-specific
 classifier (HTTP/DB/etc.) or `strict_classifier` to avoid surprises.
-- Fallback to UNKNOWN  
+
+Classifiers can return `Classification(klass=..., retry_after_s=..., details=...)` to pass
+structured hints to strategies. Returning `ErrorClass` is shorthand for
+`Classification(klass=klass)`.
 
 ## Metrics & Observability
 
@@ -157,7 +161,13 @@ policy.call(my_op, on_metric=metric_hook)
 
 ## Backoff Strategies
 
-Strategy signature:
+Strategy signature (context-aware):
+
+```
+(ctx: BackoffContext) -> float
+```
+
+Legacy signature (still supported):
 
 ```
 (attempt: int, klass: ErrorClass, prev_sleep: Optional[float]) -> float
@@ -168,6 +178,7 @@ Built‑ins:
 - `decorrelated_jitter()`
 - `equal_jitter()`
 - `token_backoff()`
+- `retry_after_or(...)`
 
 ## Per-Class Example
 
