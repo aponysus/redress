@@ -608,11 +608,17 @@ def retry(
             ...
 
     Parameters mirror RetryPolicy/AsyncRetryPolicy. Hooks/operation can be set up-front.
+
+    If neither `strategy` nor `strategies` is provided, a default
+    decorrelated_jitter(max_s=5.0) strategy is injected.
     """
 
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         op_name = operation or getattr(func, "__name__", None)
-        effective_strategy = strategy or decorrelated_jitter(max_s=5.0)
+        if strategy is None and strategies is None:
+            effective_strategy = decorrelated_jitter(max_s=5.0)
+        else:
+            effective_strategy = strategy
 
         if asyncio.iscoroutinefunction(func):
             async_policy = AsyncRetryPolicy(

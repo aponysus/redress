@@ -117,6 +117,10 @@ async def fetch_user_async():
     ...
 ```
 
+If you omit both `strategy` and `strategies`, the decorator injects
+`decorrelated_jitter(max_s=5.0)` as a default. If you provide a per-class
+`strategies` mapping without a default, the decorator will not add one.
+
 Hooks and `operation` can be set on the decorator. The `operation` defaults to the function name when omitted.
 
 ## Context managers for repeated calls
