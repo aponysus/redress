@@ -20,6 +20,15 @@ class ErrorClass(Enum):
     UNKNOWN = auto()
 
 
+class StopReason(str, Enum):
+    MAX_ATTEMPTS_GLOBAL = "MAX_ATTEMPTS_GLOBAL"
+    MAX_ATTEMPTS_PER_CLASS = "MAX_ATTEMPTS_PER_CLASS"
+    DEADLINE_EXCEEDED = "DEADLINE_EXCEEDED"
+    MAX_UNKNOWN_ATTEMPTS = "MAX_UNKNOWN_ATTEMPTS"
+    NON_RETRYABLE_CLASS = "NON_RETRYABLE_CLASS"
+    ABORTED = "ABORTED"
+
+
 class PermanentError(Exception):
     """Explicit marker that this error should not be retried."""
 

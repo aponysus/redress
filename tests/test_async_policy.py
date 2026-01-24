@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from redress.classify import default_classifier
-from redress.errors import ErrorClass, PermanentError, RateLimitError
+from redress.errors import ErrorClass, PermanentError, RateLimitError, StopReason
 from redress.policy import AsyncRetryPolicy, MetricHook
 
 
@@ -138,6 +138,7 @@ def test_async_per_class_max_attempts_limits_retries(
     assert calls["n"] == expected_calls
     assert events[-1][0] == "max_attempts_exceeded"
     assert events[-1][3]["class"] == ErrorClass.RATE_LIMIT.name
+    assert events[-1][3]["stop_reason"] == StopReason.MAX_ATTEMPTS_PER_CLASS.value
 
 
 def test_async_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,6 +179,7 @@ def test_async_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -
     assert events and events[0][0] == "no_strategy_configured"
     assert events[0][3]["class"] == ErrorClass.TRANSIENT.name
     assert events[0][3]["err"] == "TransientError"
+    assert events[0][3]["stop_reason"] == StopReason.NON_RETRYABLE_CLASS.value
 
 
 def test_async_cancelled_error_propagates_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -254,4 +256,5 @@ def test_async_deadline_exceeded_reraises_last_exception(monkeypatch: pytest.Mon
 
     assert calls["n"] == 1
     assert sleep_calls and sleep_calls[0] == pytest.approx(0.8)
-    assert "deadline_exceeded" in [event[0] for event in events]
+    deadline_event = next(event for event in events if event[0] == "deadline_exceeded")
+    assert deadline_event[3]["stop_reason"] == StopReason.DEADLINE_EXCEEDED.value

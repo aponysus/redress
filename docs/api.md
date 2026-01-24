@@ -28,6 +28,7 @@
 ## Errors
 
 - `ErrorClass` enum
+- `StopReason` enum
 - Marker exceptions: `PermanentError`, `RateLimitError`, `ConcurrencyError`
 
 ## Metrics helpers
