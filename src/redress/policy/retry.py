@@ -5,6 +5,7 @@ from typing import Any, cast
 
 from ..config import ResultClassifierFn, RetryConfig
 from ..errors import AbortRetryError, ErrorClass, RetryExhaustedError, StopReason
+from ..events import EventName
 from ..strategies import StrategyFn
 from .base import _BaseRetryPolicy, _normalize_classification
 from .context import _AsyncRetryContext, _RetryContext
@@ -43,7 +44,7 @@ def _abort_outcome(state: _RetryState, attempts: int) -> RetryOutcome[Any]:
     if state.last_stop_reason is not StopReason.ABORTED:
         state.last_stop_reason = StopReason.ABORTED
         state.emit(
-            "aborted",
+            EventName.ABORTED.value,
             attempts,
             0.0,
             stop_reason=StopReason.ABORTED,
@@ -254,12 +255,12 @@ class Retry(_BaseRetryPolicy):
             try:
                 result = func()
                 if self.result_classifier is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return result
 
                 classification_result = self.result_classifier(result)
                 if classification_result is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return result
 
                 state.check_abort(attempt)
@@ -281,7 +282,7 @@ class Retry(_BaseRetryPolicy):
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -301,7 +302,7 @@ class Retry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -322,7 +323,7 @@ class Retry(_BaseRetryPolicy):
                 if state.last_stop_reason is not StopReason.ABORTED:
                     state.last_stop_reason = StopReason.ABORTED
                     state.emit(
-                        "aborted",
+                        EventName.ABORTED.value,
                         attempt,
                         0.0,
                         stop_reason=StopReason.ABORTED,
@@ -346,7 +347,7 @@ class Retry(_BaseRetryPolicy):
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -359,7 +360,7 @@ class Retry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -371,7 +372,7 @@ class Retry(_BaseRetryPolicy):
 
         # Defensive fallback if we exit the loop without returning or raising.
         state.emit(
-            "max_attempts_exceeded",
+            EventName.MAX_ATTEMPTS_EXCEEDED.value,
             self.max_attempts,
             0.0,
             state.last_class,
@@ -421,7 +422,7 @@ class Retry(_BaseRetryPolicy):
                 attempts = attempt
                 result = func()
                 if self.result_classifier is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return cast(
                         RetryOutcome[T],
                         _build_outcome(ok=True, value=result, state=state, attempts=attempts),
@@ -429,7 +430,7 @@ class Retry(_BaseRetryPolicy):
 
                 classification_result = self.result_classifier(result)
                 if classification_result is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return cast(
                         RetryOutcome[T],
                         _build_outcome(ok=True, value=result, state=state, attempts=attempts),
@@ -450,7 +451,7 @@ class Retry(_BaseRetryPolicy):
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -466,7 +467,7 @@ class Retry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -510,7 +511,7 @@ class Retry(_BaseRetryPolicy):
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -526,7 +527,7 @@ class Retry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -540,7 +541,7 @@ class Retry(_BaseRetryPolicy):
                     )
 
         state.emit(
-            "max_attempts_exceeded",
+            EventName.MAX_ATTEMPTS_EXCEEDED.value,
             self.max_attempts,
             0.0,
             state.last_class,
@@ -627,12 +628,12 @@ class AsyncRetry(_BaseRetryPolicy):
             try:
                 result = await func()
                 if self.result_classifier is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return result
 
                 classification_result = self.result_classifier(result)
                 if classification_result is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return result
 
                 state.check_abort(attempt)
@@ -654,7 +655,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -674,7 +675,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -694,7 +695,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if state.last_stop_reason is not StopReason.ABORTED:
                     state.last_stop_reason = StopReason.ABORTED
                     state.emit(
-                        "aborted",
+                        EventName.ABORTED.value,
                         attempt,
                         0.0,
                         stop_reason=StopReason.ABORTED,
@@ -718,7 +719,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -731,7 +732,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -742,7 +743,7 @@ class AsyncRetry(_BaseRetryPolicy):
                     raise
 
         state.emit(
-            "max_attempts_exceeded",
+            EventName.MAX_ATTEMPTS_EXCEEDED.value,
             self.max_attempts,
             0.0,
             state.last_class,
@@ -792,7 +793,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 attempts = attempt
                 result = await func()
                 if self.result_classifier is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return cast(
                         RetryOutcome[T],
                         _build_outcome(ok=True, value=result, state=state, attempts=attempts),
@@ -800,7 +801,7 @@ class AsyncRetry(_BaseRetryPolicy):
 
                 classification_result = self.result_classifier(result)
                 if classification_result is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return cast(
                         RetryOutcome[T],
                         _build_outcome(ok=True, value=result, state=state, attempts=attempts),
@@ -821,7 +822,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -837,7 +838,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -881,7 +882,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -897,7 +898,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -911,7 +912,7 @@ class AsyncRetry(_BaseRetryPolicy):
                     )
 
         state.emit(
-            "max_attempts_exceeded",
+            EventName.MAX_ATTEMPTS_EXCEEDED.value,
             self.max_attempts,
             0.0,
             state.last_class,

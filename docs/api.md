@@ -1,4 +1,4 @@
-# API reference (high-level)
+# API reference
 
 ## Policies
 
@@ -58,3 +58,8 @@
 - `prometheus_metric_hook(counter)`
 - `otel_metric_hook(meter, name="redress_attempts")`
 - `redress.contrib.otel.otel_hooks(tracer=None, meter=None)` (spans + metrics)
+
+## Events
+
+- `EventName` enum (`redress.events.EventName`) for hook event constants
+- `StopReason` enum is re-exported from `redress.events`

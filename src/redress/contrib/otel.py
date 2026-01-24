@@ -5,6 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol, TypedDict, cast
 
+from ..events import EventName
 from ..policy import LogHook, MetricHook
 
 
@@ -37,20 +38,20 @@ class OtelMeter(Protocol):
 
 
 _TERMINAL_EVENTS = {
-    "success",
-    "permanent_fail",
-    "deadline_exceeded",
-    "max_attempts_exceeded",
-    "max_unknown_attempts_exceeded",
-    "no_strategy_configured",
-    "aborted",
+    EventName.SUCCESS.value,
+    EventName.PERMANENT_FAIL.value,
+    EventName.DEADLINE_EXCEEDED.value,
+    EventName.MAX_ATTEMPTS_EXCEEDED.value,
+    EventName.MAX_UNKNOWN_ATTEMPTS_EXCEEDED.value,
+    EventName.NO_STRATEGY_CONFIGURED.value,
+    EventName.ABORTED.value,
 }
 
 _CIRCUIT_EVENTS = {
-    "circuit_opened",
-    "circuit_half_open",
-    "circuit_closed",
-    "circuit_rejected",
+    EventName.CIRCUIT_OPENED.value,
+    EventName.CIRCUIT_HALF_OPEN.value,
+    EventName.CIRCUIT_CLOSED.value,
+    EventName.CIRCUIT_REJECTED.value,
 }
 
 
@@ -162,10 +163,10 @@ def otel_hooks(
         _update_state(state, attempt, tags)
         attrs = _build_attributes(event=event, attempt=attempt, tags=tags, state=state)
 
-        if event == "retry":
+        if event == EventName.RETRY.value:
             retries.add(1, attributes=attrs)
 
-        if event == "success" and attempt > 1:
+        if event == EventName.SUCCESS.value and attempt > 1:
             success_after_retries.add(1, attributes=attrs)
 
         if event in _TERMINAL_EVENTS and attempt > 0 and state.started_at is not None:

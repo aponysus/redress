@@ -17,6 +17,7 @@ from redress.errors import (
     RetryExhaustedError,
     StopReason,
 )
+from redress.events import EventName
 from redress.policy import AsyncPolicy, AsyncRetry, AsyncRetryPolicy, MetricHook
 from redress.strategies import BackoffContext
 
@@ -109,7 +110,7 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert calls["n"] == 1
     assert len(events) == 1
     event, attempt, sleep_s, tags = events[0]
-    assert event == "permanent_fail"
+    assert event == EventName.PERMANENT_FAIL.value
     assert attempt == 1
     assert sleep_s == 0.0
     assert tags["class"] == ErrorClass.PERMANENT.name

@@ -14,6 +14,7 @@ from .errors import (
     ServerError,
     StopReason,
 )
+from .events import EventName
 from .extras import http_classifier, http_retry_after_classifier, sqlstate_classifier
 from .metrics import otel_metric_hook, prometheus_metric_hook
 from .policy import (
@@ -47,6 +48,7 @@ __all__ = [
     "CircuitState",
     "ErrorClass",
     "CircuitOpenError",
+    "EventName",
     "AbortRetry",
     "AbortRetryError",
     "StopReason",

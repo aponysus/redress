@@ -9,6 +9,8 @@ Hook failures are swallowed so they never break the workload; log adapter errors
 
 ## Events
 
+Event names are exported as `redress.events.EventName` (values shown below).
+
 - `success` – call succeeded
 - `retry` – retry scheduled (includes `sleep_s`)
 - `permanent_fail` – non-retriable class (`PERMANENT`, `AUTH`, `PERMISSION`)

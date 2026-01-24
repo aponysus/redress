@@ -19,6 +19,7 @@ from redress.errors import (
     RetryExhaustedError,
     StopReason,
 )
+from redress.events import EventName
 from redress.policy import MetricHook, Policy, Retry, RetryPolicy
 from redress.strategies import BackoffContext, decorrelated_jitter
 
@@ -407,7 +408,7 @@ def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert call_count["n"] == 1
     event, attempt, sleep_s, tags = events[0]
-    assert event == "permanent_fail"
+    assert event == EventName.PERMANENT_FAIL.value
     assert attempt == 1
     assert sleep_s == 0.0
     assert tags["class"] == ErrorClass.AUTH.name
