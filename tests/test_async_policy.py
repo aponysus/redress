@@ -102,6 +102,44 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert tags["class"] == ErrorClass.PERMANENT.name
 
 
+@pytest.mark.parametrize("limit, expected_calls", [(0, 1), (1, 2), (2, 3)])
+def test_async_per_class_max_attempts_limits_retries(
+    monkeypatch: pytest.MonkeyPatch, limit: int, expected_calls: int
+) -> None:
+    class RateLimitError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    async def func() -> None:
+        calls["n"] += 1
+        raise RateLimitError("429")
+
+    metric_hook, events = _collect_metrics()
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.RATE_LIMIT
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        per_class_max_attempts={ErrorClass.RATE_LIMIT: limit},
+        max_attempts=10,
+    )
+
+    with pytest.raises(RateLimitError):
+        asyncio.run(policy.call(func, on_metric=metric_hook))
+
+    assert calls["n"] == expected_calls
+    assert events[-1][0] == "max_attempts_exceeded"
+    assert events[-1][3]["class"] == ErrorClass.RATE_LIMIT.name
+
+
 def test_async_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None:
     class TransientError(Exception):
         pass

@@ -96,10 +96,10 @@ def _lint_config_view(cfg: _ConfigView) -> tuple[list[str], list[str]]:
                     f"[{cfg.source}] per_class_max_attempts keys must be ErrorClass values "
                     f"(got {klass!r})"
                 )
-            if limit < 1:
+            if limit < 0:
                 errors.append(
                     f"[{cfg.source}] per_class_max_attempts for "
-                    f"{getattr(klass, 'name', klass)!r} must be >= 1 (got {limit!r})"
+                    f"{getattr(klass, 'name', klass)!r} must be >= 0 (got {limit!r})"
                 )
 
     has_default = cfg.default_strategy is not None

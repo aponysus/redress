@@ -501,9 +501,12 @@ def test_hooks_are_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls["n"] == 2
 
 
-def test_per_class_max_attempts_limits_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("limit, expected_calls", [(0, 1), (1, 2), (2, 3)])
+def test_per_class_max_attempts_limits_retries(
+    monkeypatch: pytest.MonkeyPatch, limit: int, expected_calls: int
+) -> None:
     """
-    per_class_max_attempts should cap retries for a specific error class.
+    per_class_max_attempts limits retries for a specific error class.
     """
 
     class RateLimitError(Exception):
@@ -525,7 +528,7 @@ def test_per_class_max_attempts_limits_retries(monkeypatch: pytest.MonkeyPatch) 
     policy = RetryPolicy(
         classifier=classifier,
         strategy=_no_sleep_strategy,
-        per_class_max_attempts={ErrorClass.RATE_LIMIT: 2},
+        per_class_max_attempts={ErrorClass.RATE_LIMIT: limit},
         max_attempts=10,
     )
 
@@ -534,8 +537,7 @@ def test_per_class_max_attempts_limits_retries(monkeypatch: pytest.MonkeyPatch) 
 
     _assert_tb_has_frame(excinfo.value, func.__name__)
 
-    # initial + 2 retries, then cap hit
-    assert calls["n"] == 3
+    assert calls["n"] == expected_calls
     assert events[-1][0] == "max_attempts_exceeded"
     assert events[-1][3]["class"] == ErrorClass.RATE_LIMIT.name
 
