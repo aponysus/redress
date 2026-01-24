@@ -11,6 +11,7 @@ from redress.circuit import CircuitBreaker, CircuitState
 from redress.classify import Classification, default_classifier
 from redress.config import RetryConfig
 from redress.errors import (
+    AbortRetryError,
     CircuitOpenError,
     ErrorClass,
     PermanentError,
@@ -18,6 +19,7 @@ from redress.errors import (
     RetryExhaustedError,
     StopReason,
 )
+from redress.events import EventName
 from redress.policy import MetricHook, Policy, Retry, RetryPolicy
 from redress.strategies import BackoffContext, decorrelated_jitter
 
@@ -118,15 +120,260 @@ def test_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     # Only one attempt
     assert call_count["n"] == 1
 
-    # Metrics: single permanent_fail, no 'retry'
+
+def test_policy_abort_if_stops_before_attempt() -> None:
+    calls = {"func": 0, "classifier": 0}
+
+    def func() -> None:
+        calls["func"] += 1
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        calls["classifier"] += 1
+        return ErrorClass.TRANSIENT
+
+    metric_hook, events = _collect_metrics()
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        policy.call(func, on_metric=metric_hook, abort_if=lambda: True)
+
+    assert calls["func"] == 0
+    assert calls["classifier"] == 0
     assert len(events) == 1
     event, attempt, sleep_s, tags = events[0]
-    assert event == "permanent_fail"
-    assert attempt == 1
+    assert event == "aborted"
+    assert attempt == 0
     assert sleep_s == 0.0
-    assert tags["err"] == "PermanentError"
-    assert tags["class"] == ErrorClass.PERMANENT.name
-    assert tags["stop_reason"] == StopReason.NON_RETRYABLE_CLASS.value
+    assert tags["stop_reason"] == StopReason.ABORTED.value
+
+
+def test_policy_abort_if_skips_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"func": 0}
+
+    def func() -> None:
+        calls["func"] += 1
+        raise RateLimitError("429")
+
+    checks = iter([False, False, True])
+
+    def abort_if() -> bool:
+        return next(checks)
+
+    slept = {"called": False}
+
+    def fake_sleep(_: float) -> None:
+        slept["called"] = True
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", fake_sleep)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=lambda ctx: 1.0,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        policy.call(func, abort_if=abort_if)
+
+    assert calls["func"] == 1
+    assert slept["called"] is False
+
+
+def test_policy_execute_success_after_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RateLimitError("429")
+        return "ok"
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda _: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=5,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is True
+    assert outcome.value == "ok"
+    assert outcome.attempts == 3
+    assert outcome.stop_reason is None
+
+
+def test_policy_execute_stop_reason_permanent() -> None:
+    def func() -> None:
+        raise PermanentError("stop")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.NON_RETRYABLE_CLASS
+    assert outcome.attempts == 1
+    assert outcome.last_class == ErrorClass.PERMANENT
+    assert isinstance(outcome.last_exception, PermanentError)
+
+
+def test_policy_execute_stop_reason_per_class_cap() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        per_class_max_attempts={ErrorClass.TRANSIENT: 0},
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_PER_CLASS
+    assert outcome.attempts == 1
+    assert outcome.last_class == ErrorClass.TRANSIENT
+
+
+def test_policy_execute_stop_reason_unknown_cap() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.UNKNOWN
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        max_unknown_attempts=0,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_UNKNOWN_ATTEMPTS
+    assert outcome.attempts == 1
+    assert outcome.last_class == ErrorClass.UNKNOWN
+
+
+def test_policy_execute_stop_reason_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _FakeTime(0.0)
+    monkeypatch.setattr(_state_mod.time, "monotonic", clock.monotonic)
+
+    def func() -> None:
+        clock.advance(2.0)
+        raise RateLimitError("429")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=1.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.DEADLINE_EXCEEDED
+    assert outcome.attempts == 1
+
+
+def test_policy_execute_stop_reason_max_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda _: None)
+
+    def func() -> None:
+        raise RateLimitError("429")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=1,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert outcome.attempts == 1
+
+
+def test_policy_execute_stop_reason_no_strategy() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=None,
+        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.NO_STRATEGY
+    assert outcome.attempts == 1
+
+
+def test_policy_execute_stop_reason_aborted() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func, abort_if=lambda: True)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.ABORTED
+    assert outcome.attempts == 0
+
+
+def test_policy_execute_result_failure() -> None:
+    def func() -> str:
+        return "bad"
+
+    def result_classifier(_: str) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=1,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert outcome.attempts == 1
+    assert outcome.cause == "result"
+    assert outcome.last_result == "bad"
 
 
 def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -161,7 +408,7 @@ def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert call_count["n"] == 1
     event, attempt, sleep_s, tags = events[0]
-    assert event == "permanent_fail"
+    assert event == EventName.PERMANENT_FAIL.value
     assert attempt == 1
     assert sleep_s == 0.0
     assert tags["class"] == ErrorClass.AUTH.name
@@ -1536,3 +1783,181 @@ def test_policy_breaker_ignores_circuit_open_error() -> None:
         policy.call(fail)
 
     assert breaker.state is CircuitState.CLOSED
+
+
+def test_policy_execute_no_retry_failure_emits_breaker_event() -> None:
+    class WeirdError(Exception):
+        pass
+
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+
+    policy = Policy(circuit_breaker=breaker)
+    metric_hook, events = _collect_metrics()
+
+    def fail() -> None:
+        raise WeirdError("boom")
+
+    outcome = policy.execute(fail, on_metric=metric_hook, operation="op")
+
+    assert outcome.ok is False
+    assert outcome.attempts == 1
+    assert isinstance(outcome.last_exception, WeirdError)
+    assert outcome.last_class is ErrorClass.UNKNOWN
+    assert outcome.cause == "exception"
+    assert breaker.state is CircuitState.OPEN
+
+    opened_tags = next(tags for event, _, _, tags in events if event == "circuit_opened")
+    assert opened_tags["state"] == CircuitState.OPEN.value
+    assert opened_tags["operation"] == "op"
+
+
+def test_policy_execute_breaker_rejected_returns_outcome() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+    breaker.record_failure(ErrorClass.UNKNOWN)
+
+    policy = Policy(circuit_breaker=breaker)
+    metric_hook, events = _collect_metrics()
+
+    outcome = policy.execute(lambda: "ok", on_metric=metric_hook, operation="op")
+
+    assert outcome.ok is False
+    assert outcome.attempts == 0
+    assert isinstance(outcome.last_exception, CircuitOpenError)
+    assert breaker.state is CircuitState.OPEN
+
+    rejected_tags = next(tags for event, _, _, tags in events if event == "circuit_rejected")
+    assert rejected_tags["state"] == CircuitState.OPEN.value
+    assert rejected_tags["operation"] == "op"
+
+
+def test_policy_execute_with_retry_aborted_records_cancel() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    called = {"n": 0}
+    original = breaker.record_cancel
+
+    def record_cancel() -> None:
+        called["n"] += 1
+        original()
+
+    breaker.record_cancel = record_cancel  # type: ignore[assignment]
+
+    policy = Policy(
+        retry=Retry(
+            classifier=default_classifier,
+            strategy=_no_sleep_strategy,
+            max_attempts=3,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    outcome = policy.execute(lambda: "ok", abort_if=lambda: True)
+
+    assert outcome.stop_reason is StopReason.ABORTED
+    assert outcome.attempts == 0
+    assert called["n"] == 1
+
+
+def test_policy_execute_breaker_half_open_success_emits_events() -> None:
+    fake_time = _FakeTime()
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=1.0,
+        trip_on={ErrorClass.UNKNOWN},
+        clock=fake_time.monotonic,
+    )
+    breaker.record_failure(ErrorClass.UNKNOWN)
+    fake_time.advance(1.1)
+
+    policy = Policy(circuit_breaker=breaker)
+    metric_hook, events = _collect_metrics()
+    log_events: list[tuple[str, dict[str, Any]]] = []
+
+    def log_hook(event: str, fields: dict[str, Any]) -> None:
+        log_events.append((event, fields))
+
+    outcome = policy.execute(lambda: "ok", on_metric=metric_hook, on_log=log_hook)
+
+    assert outcome.ok is True
+    event_names = [event for event, _, _, _ in events]
+    assert "circuit_half_open" in event_names
+    assert "circuit_closed" in event_names
+    assert any(event == "circuit_half_open" for event, _ in log_events)
+
+
+def test_policy_execute_no_retry_abort_if_returns_outcome() -> None:
+    policy = Policy()
+
+    outcome = policy.execute(lambda: "ok", abort_if=lambda: True)
+
+    assert outcome.stop_reason is StopReason.ABORTED
+    assert outcome.attempts == 0
+
+
+def test_policy_execute_breaker_event_hooks_swallow_errors() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+    breaker.record_failure(ErrorClass.UNKNOWN)
+
+    policy = Policy(circuit_breaker=breaker)
+
+    def metric_hook(_: str, __: int, ___: float, ____: dict[str, Any]) -> None:
+        raise RuntimeError("metric fail")
+
+    def log_hook(_: str, __: dict[str, Any]) -> None:
+        raise RuntimeError("log fail")
+
+    outcome = policy.execute(lambda: "ok", on_metric=metric_hook, on_log=log_hook)
+
+    assert outcome.ok is False
+    assert isinstance(outcome.last_exception, CircuitOpenError)
+
+
+def test_policy_call_no_retry_abort_if_raises() -> None:
+    policy = Policy()
+
+    with pytest.raises(AbortRetryError):
+        policy.call(lambda: "ok", abort_if=lambda: True)
+
+
+def test_policy_call_no_retry_abort_if_records_cancel() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+    )
+    called = {"n": 0}
+    original = breaker.record_cancel
+
+    def record_cancel() -> None:
+        called["n"] += 1
+        original()
+
+    breaker.record_cancel = record_cancel  # type: ignore[assignment]
+
+    policy = Policy(circuit_breaker=breaker)
+
+    with pytest.raises(AbortRetryError):
+        policy.call(lambda: "ok", abort_if=lambda: True)
+
+    assert called["n"] == 1

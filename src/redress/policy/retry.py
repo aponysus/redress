@@ -1,15 +1,55 @@
 import asyncio
 import time
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from ..config import ResultClassifierFn, RetryConfig
-from ..errors import ErrorClass, RetryExhaustedError, StopReason
+from ..errors import AbortRetryError, ErrorClass, RetryExhaustedError, StopReason
+from ..events import EventName
 from ..strategies import StrategyFn
 from .base import _BaseRetryPolicy, _normalize_classification
 from .context import _AsyncRetryContext, _RetryContext
 from .state import _RetryState
-from .types import ClassifierFn, LogHook, MetricHook, T
+from .types import AbortPredicate, ClassifierFn, LogHook, MetricHook, RetryOutcome, T
+
+
+def _build_outcome(
+    *,
+    ok: bool,
+    value: Any | None,
+    state: _RetryState,
+    attempts: int,
+) -> RetryOutcome[Any]:
+    last_exception: BaseException | None = None
+    last_result: Any | None = None
+    if not ok and state.last_cause == "exception":
+        last_exception = state.last_exc
+    if not ok and state.last_cause == "result":
+        last_result = state.last_result
+
+    return RetryOutcome(
+        ok=ok,
+        value=value if ok else None,
+        stop_reason=None if ok else state.last_stop_reason,
+        attempts=attempts,
+        last_class=None if ok else state.last_class,
+        last_exception=last_exception,
+        last_result=last_result,
+        cause=None if ok else state.last_cause,
+        elapsed_s=state.elapsed().total_seconds(),
+    )
+
+
+def _abort_outcome(state: _RetryState, attempts: int) -> RetryOutcome[Any]:
+    if state.last_stop_reason is not StopReason.ABORTED:
+        state.last_stop_reason = StopReason.ABORTED
+        state.emit(
+            EventName.ABORTED.value,
+            attempts,
+            0.0,
+            stop_reason=StopReason.ABORTED,
+        )
+    return _build_outcome(ok=False, value=None, state=state, attempts=attempts)
 
 
 class Retry(_BaseRetryPolicy):
@@ -124,6 +164,7 @@ class Retry(_BaseRetryPolicy):
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> Any:
         """
         Execute `func` with retries according to this policy.
@@ -177,6 +218,11 @@ class Retry(_BaseRetryPolicy):
             Optional logical name for the action being retried (e.g.,
             "fetch_user_profile"). Propagated into tags for metrics/logging.
 
+        abort_if:
+            Optional predicate checked before attempts and before sleeping.
+            When it returns True, retries stop immediately and AbortRetryError
+            is raised.
+
         Returns
         -------
         Any
@@ -192,26 +238,32 @@ class Retry(_BaseRetryPolicy):
         RetryExhaustedError
             Raised when retries stop due to a result-based failure (no
             exception was thrown).
+
+        AbortRetryError
+            Raised when abort_if returns True or the user raises AbortRetryError.
         """
         state = _RetryState(
             policy=self,
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
+            abort_if=abort_if,
         )
 
         for attempt in range(1, self.max_attempts + 1):
+            state.check_abort(attempt - 1)
             try:
                 result = func()
                 if self.result_classifier is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return result
 
                 classification_result = self.result_classifier(result)
                 if classification_result is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return result
 
+                state.check_abort(attempt)
                 classification = _normalize_classification(classification_result)
                 decision = state.handle_result(result, classification, attempt)
                 if decision.action == "raise":
@@ -224,12 +276,13 @@ class Retry(_BaseRetryPolicy):
                         last_result=state.last_result,
                     )
 
+                state.check_abort(attempt)
                 time.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -249,7 +302,7 @@ class Retry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -266,6 +319,16 @@ class Retry(_BaseRetryPolicy):
                         last_result=state.last_result,
                     )
 
+            except AbortRetryError:
+                if state.last_stop_reason is not StopReason.ABORTED:
+                    state.last_stop_reason = StopReason.ABORTED
+                    state.emit(
+                        EventName.ABORTED.value,
+                        attempt,
+                        0.0,
+                        stop_reason=StopReason.ABORTED,
+                    )
+                raise
             except asyncio.CancelledError:
                 raise
             except (KeyboardInterrupt, SystemExit):
@@ -273,16 +336,18 @@ class Retry(_BaseRetryPolicy):
             except RetryExhaustedError:
                 raise
             except Exception as exc:
+                state.check_abort(attempt)
                 decision = state.handle_exception(exc, attempt)
                 if decision.action == "raise":
                     raise
 
+                state.check_abort(attempt)
                 time.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -295,7 +360,7 @@ class Retry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -307,7 +372,7 @@ class Retry(_BaseRetryPolicy):
 
         # Defensive fallback if we exit the loop without returning or raising.
         state.emit(
-            "max_attempts_exceeded",
+            EventName.MAX_ATTEMPTS_EXCEEDED.value,
             self.max_attempts,
             0.0,
             state.last_class,
@@ -330,12 +395,173 @@ class Retry(_BaseRetryPolicy):
         # Extremely unlikely: no exception and no result.
         raise RuntimeError("Retry attempts exhausted with no captured exception")
 
+    def execute(
+        self,
+        func: Callable[[], T],
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
+    ) -> RetryOutcome[T]:
+        """
+        Execute `func` and return a structured RetryOutcome.
+        """
+        state = _RetryState(
+            policy=self,
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+            abort_if=abort_if,
+        )
+        attempts = 0
+
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                state.check_abort(attempt - 1)
+                attempts = attempt
+                result = func()
+                if self.result_classifier is None:
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=True, value=result, state=state, attempts=attempts),
+                    )
+
+                classification_result = self.result_classifier(result)
+                if classification_result is None:
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=True, value=result, state=state, attempts=attempts),
+                    )
+
+                state.check_abort(attempt)
+                classification = _normalize_classification(classification_result)
+                decision = state.handle_result(result, classification, attempt)
+                if decision.action == "raise":
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+                state.check_abort(attempt)
+                time.sleep(decision.sleep_s)
+
+                if state.elapsed() > self.deadline:
+                    state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
+                    state.emit(
+                        EventName.DEADLINE_EXCEEDED.value,
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        None,
+                        stop_reason=StopReason.DEADLINE_EXCEEDED,
+                        cause=state.last_cause,
+                    )
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+                if attempt == self.max_attempts:
+                    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+                    state.emit(
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        None,
+                        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                        cause=state.last_cause,
+                    )
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+            except AbortRetryError:
+                return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+            except asyncio.CancelledError:
+                raise
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except RetryExhaustedError:
+                raise
+            except Exception as exc:
+                try:
+                    state.check_abort(attempt)
+                except AbortRetryError:
+                    return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+
+                decision = state.handle_exception(exc, attempt)
+                if decision.action == "raise":
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+                try:
+                    state.check_abort(attempt)
+                except AbortRetryError:
+                    return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+
+                time.sleep(decision.sleep_s)
+
+                if state.elapsed() > self.deadline:
+                    state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
+                    state.emit(
+                        EventName.DEADLINE_EXCEEDED.value,
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        state.last_exc,
+                        stop_reason=StopReason.DEADLINE_EXCEEDED,
+                        cause=state.last_cause,
+                    )
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+                if attempt == self.max_attempts:
+                    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+                    state.emit(
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        state.last_exc,
+                        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                        cause=state.last_cause,
+                    )
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+        state.emit(
+            EventName.MAX_ATTEMPTS_EXCEEDED.value,
+            self.max_attempts,
+            0.0,
+            state.last_class,
+            state.last_exc,
+            stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+            cause=state.last_cause,
+        )
+        state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+        return cast(
+            RetryOutcome[T],
+            _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+        )
+
     def context(
         self,
         *,
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> _RetryContext:
         """
         Context manager that binds hooks/operation for multiple calls.
@@ -345,7 +571,7 @@ class Retry(_BaseRetryPolicy):
                 retry(fn1)
                 retry(fn2, arg1, arg2)
         """
-        return _RetryContext(self, on_metric, on_log, operation)
+        return _RetryContext(self, on_metric, on_log, operation, abort_if)
 
 
 class AsyncRetry(_BaseRetryPolicy):
@@ -381,31 +607,36 @@ class AsyncRetry(_BaseRetryPolicy):
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> T:
         """
         Execute an async function with retries according to this policy.
 
         Result-based failures raise RetryExhaustedError when retries stop.
+        abort_if can be used to cooperatively stop retry execution.
         """
         state = _RetryState(
             policy=self,
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
+            abort_if=abort_if,
         )
 
         for attempt in range(1, self.max_attempts + 1):
+            state.check_abort(attempt - 1)
             try:
                 result = await func()
                 if self.result_classifier is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return result
 
                 classification_result = self.result_classifier(result)
                 if classification_result is None:
-                    state.emit("success", attempt, 0.0)
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
                     return result
 
+                state.check_abort(attempt)
                 classification = _normalize_classification(classification_result)
                 decision = state.handle_result(result, classification, attempt)
                 if decision.action == "raise":
@@ -418,12 +649,13 @@ class AsyncRetry(_BaseRetryPolicy):
                         last_result=state.last_result,
                     )
 
+                state.check_abort(attempt)
                 await asyncio.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -443,7 +675,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -459,6 +691,16 @@ class AsyncRetry(_BaseRetryPolicy):
                         last_exception=None,
                         last_result=state.last_result,
                     )
+            except AbortRetryError:
+                if state.last_stop_reason is not StopReason.ABORTED:
+                    state.last_stop_reason = StopReason.ABORTED
+                    state.emit(
+                        EventName.ABORTED.value,
+                        attempt,
+                        0.0,
+                        stop_reason=StopReason.ABORTED,
+                    )
+                raise
             except asyncio.CancelledError:
                 raise
             except (KeyboardInterrupt, SystemExit):
@@ -466,16 +708,18 @@ class AsyncRetry(_BaseRetryPolicy):
             except RetryExhaustedError:
                 raise
             except Exception as exc:
+                state.check_abort(attempt)
                 decision = state.handle_exception(exc, attempt)
                 if decision.action == "raise":
                     raise
 
+                state.check_abort(attempt)
                 await asyncio.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
                     state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
                     state.emit(
-                        "deadline_exceeded",
+                        EventName.DEADLINE_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -488,7 +732,7 @@ class AsyncRetry(_BaseRetryPolicy):
                 if attempt == self.max_attempts:
                     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
                     state.emit(
-                        "max_attempts_exceeded",
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
                         attempt,
                         0.0,
                         state.last_class,
@@ -499,7 +743,7 @@ class AsyncRetry(_BaseRetryPolicy):
                     raise
 
         state.emit(
-            "max_attempts_exceeded",
+            EventName.MAX_ATTEMPTS_EXCEEDED.value,
             self.max_attempts,
             0.0,
             state.last_class,
@@ -522,12 +766,173 @@ class AsyncRetry(_BaseRetryPolicy):
 
         raise RuntimeError("Retry attempts exhausted with no captured exception")
 
+    async def execute(
+        self,
+        func: Callable[[], Awaitable[T]],
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
+    ) -> RetryOutcome[T]:
+        """
+        Execute an async function and return a structured RetryOutcome.
+        """
+        state = _RetryState(
+            policy=self,
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+            abort_if=abort_if,
+        )
+        attempts = 0
+
+        for attempt in range(1, self.max_attempts + 1):
+            try:
+                state.check_abort(attempt - 1)
+                attempts = attempt
+                result = await func()
+                if self.result_classifier is None:
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=True, value=result, state=state, attempts=attempts),
+                    )
+
+                classification_result = self.result_classifier(result)
+                if classification_result is None:
+                    state.emit(EventName.SUCCESS.value, attempt, 0.0)
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=True, value=result, state=state, attempts=attempts),
+                    )
+
+                state.check_abort(attempt)
+                classification = _normalize_classification(classification_result)
+                decision = state.handle_result(result, classification, attempt)
+                if decision.action == "raise":
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+                state.check_abort(attempt)
+                await asyncio.sleep(decision.sleep_s)
+
+                if state.elapsed() > self.deadline:
+                    state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
+                    state.emit(
+                        EventName.DEADLINE_EXCEEDED.value,
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        None,
+                        stop_reason=StopReason.DEADLINE_EXCEEDED,
+                        cause=state.last_cause,
+                    )
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+                if attempt == self.max_attempts:
+                    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+                    state.emit(
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        None,
+                        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                        cause=state.last_cause,
+                    )
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+            except AbortRetryError:
+                return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+            except asyncio.CancelledError:
+                raise
+            except (KeyboardInterrupt, SystemExit):
+                raise
+            except RetryExhaustedError:
+                raise
+            except Exception as exc:
+                try:
+                    state.check_abort(attempt)
+                except AbortRetryError:
+                    return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+
+                decision = state.handle_exception(exc, attempt)
+                if decision.action == "raise":
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+                try:
+                    state.check_abort(attempt)
+                except AbortRetryError:
+                    return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+
+                await asyncio.sleep(decision.sleep_s)
+
+                if state.elapsed() > self.deadline:
+                    state.last_stop_reason = StopReason.DEADLINE_EXCEEDED
+                    state.emit(
+                        EventName.DEADLINE_EXCEEDED.value,
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        state.last_exc,
+                        stop_reason=StopReason.DEADLINE_EXCEEDED,
+                        cause=state.last_cause,
+                    )
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+                if attempt == self.max_attempts:
+                    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+                    state.emit(
+                        EventName.MAX_ATTEMPTS_EXCEEDED.value,
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        state.last_exc,
+                        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                        cause=state.last_cause,
+                    )
+                    return cast(
+                        RetryOutcome[T],
+                        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+                    )
+
+        state.emit(
+            EventName.MAX_ATTEMPTS_EXCEEDED.value,
+            self.max_attempts,
+            0.0,
+            state.last_class,
+            state.last_exc,
+            stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+            cause=state.last_cause,
+        )
+        state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+        return cast(
+            RetryOutcome[T],
+            _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+        )
+
     def context(
         self,
         *,
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> _AsyncRetryContext:
         """
         Async context manager that binds hooks/operation for multiple calls.
@@ -537,4 +942,4 @@ class AsyncRetry(_BaseRetryPolicy):
                 await retry(async_fn1)
                 await retry(async_fn2, arg)
         """
-        return _AsyncRetryContext(self, on_metric, on_log, operation)
+        return _AsyncRetryContext(self, on_metric, on_log, operation, abort_if)

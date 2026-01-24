@@ -2,7 +2,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from .types import LogHook, MetricHook, T
+from .types import AbortPredicate, LogHook, MetricHook, T
 
 if TYPE_CHECKING:
     from .container import AsyncPolicy, Policy
@@ -15,6 +15,7 @@ class _RetryContext:
     on_metric: MetricHook | None
     on_log: LogHook | None
     operation: str | None
+    abort_if: AbortPredicate | None
 
     def __enter__(self) -> Callable[..., T]:
         return self.call
@@ -28,6 +29,7 @@ class _RetryContext:
             on_metric=self.on_metric,
             on_log=self.on_log,
             operation=self.operation,
+            abort_if=self.abort_if,
         )
         return cast(T, result)
 
@@ -38,6 +40,7 @@ class _AsyncRetryContext:
     on_metric: MetricHook | None
     on_log: LogHook | None
     operation: str | None
+    abort_if: AbortPredicate | None
 
     async def __aenter__(self) -> Callable[..., Awaitable[T]]:
         return self.call
@@ -51,6 +54,7 @@ class _AsyncRetryContext:
             on_metric=self.on_metric,
             on_log=self.on_log,
             operation=self.operation,
+            abort_if=self.abort_if,
         )
         return result
 
@@ -61,6 +65,7 @@ class _PolicyContext:
     on_metric: MetricHook | None
     on_log: LogHook | None
     operation: str | None
+    abort_if: AbortPredicate | None
 
     def __enter__(self) -> Callable[..., T]:
         return self.call
@@ -74,6 +79,7 @@ class _PolicyContext:
             on_metric=self.on_metric,
             on_log=self.on_log,
             operation=self.operation,
+            abort_if=self.abort_if,
         )
         return cast(T, result)
 
@@ -84,6 +90,7 @@ class _AsyncPolicyContext:
     on_metric: MetricHook | None
     on_log: LogHook | None
     operation: str | None
+    abort_if: AbortPredicate | None
 
     async def __aenter__(self) -> Callable[..., Awaitable[T]]:
         return self.call
@@ -97,5 +104,6 @@ class _AsyncPolicyContext:
             on_metric=self.on_metric,
             on_log=self.on_log,
             operation=self.operation,
+            abort_if=self.abort_if,
         )
         return result

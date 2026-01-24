@@ -1,14 +1,16 @@
-# API reference (high-level)
+# API reference
 
 ## Policies
 
 - `Policy`, `AsyncPolicy`
   - Unified resilience containers; use `Policy(retry=Retry(...))`
-  - `.call(func, on_metric=None, on_log=None, operation=None)`
-  - `.context(on_metric=None, on_log=None, operation=None)`
+  - `.call(func, on_metric=None, on_log=None, operation=None, abort_if=None)`
+  - `.execute(func, on_metric=None, on_log=None, operation=None, abort_if=None)`
+  - `.context(on_metric=None, on_log=None, operation=None, abort_if=None)`
 - `Retry`, `AsyncRetry`
   - Retry components with `result_classifier` support
-  - `.call(...)`, `.context(...)`, `.from_config(config, classifier=...)`
+  - `.call(..., abort_if=None)`, `.execute(..., abort_if=None)`, `.context(..., abort_if=None)`
+  - `.from_config(config, classifier=...)`
 - `RetryPolicy`, `AsyncRetryPolicy`
   - Backward-compatible sugar for `Policy(retry=Retry(...))`
 - `CircuitBreaker`
@@ -44,9 +46,20 @@
 - `CircuitOpenError` fail-fast error when breaker is open
 - `StopReason` enum
 - `RetryExhaustedError` terminal error (result-based exhaustion)
+- `AbortRetryError` cooperative abort signal (alias: `AbortRetry`)
 - Marker exceptions: `PermanentError`, `RateLimitError`, `ConcurrencyError`
+
+## Outcomes
+
+- `RetryOutcome[T]` from `execute()` with attempts, stop_reason, and last error info
 
 ## Metrics helpers
 
 - `prometheus_metric_hook(counter)`
 - `otel_metric_hook(meter, name="redress_attempts")`
+- `redress.contrib.otel.otel_hooks(tracer=None, meter=None)` (spans + metrics)
+
+## Events
+
+- `EventName` enum (`redress.events.EventName`) for hook event constants
+- `StopReason` enum is re-exported from `redress.events`

@@ -6,10 +6,11 @@ from datetime import timedelta
 from typing import Any, Literal
 
 from ..classify import Classification
-from ..errors import ErrorClass, StopReason
+from ..errors import AbortRetryError, ErrorClass, StopReason
+from ..events import EventName
 from ..strategies import BackoffContext
 from .base import _BaseRetryPolicy, _normalize_classification
-from .types import FailureCause, LogHook, MetricHook
+from .types import AbortPredicate, FailureCause, LogHook, MetricHook
 
 
 @dataclass(frozen=True)
@@ -48,11 +49,13 @@ class _RetryState:
         on_metric: MetricHook | None,
         on_log: LogHook | None,
         operation: str | None,
+        abort_if: AbortPredicate | None,
     ) -> None:
         self.policy = policy
         self.on_metric = on_metric
         self.on_log = on_log
         self.operation = operation
+        self.abort_if = abort_if
         self.start_mono = time.monotonic()
         self.prev_sleep: float | None = None
         self.last_exc: BaseException | None = None
@@ -62,6 +65,21 @@ class _RetryState:
         self.last_stop_reason: StopReason | None = None
         self.unknown_attempts: int = 0
         self.per_class_counts: dict[ErrorClass, int] = collections.defaultdict(int)
+
+    def check_abort(self, attempt: int) -> None:
+        if self.abort_if is None:
+            return
+        if not self.abort_if():
+            return
+
+        self.last_stop_reason = StopReason.ABORTED
+        self.emit(
+            EventName.ABORTED.value,
+            attempt,
+            0.0,
+            stop_reason=StopReason.ABORTED,
+        )
+        raise AbortRetryError()
 
     def elapsed(self) -> timedelta:
         return timedelta(seconds=time.monotonic() - self.start_mono)
@@ -103,7 +121,7 @@ class _RetryState:
         if self.on_log is not None:
             fields = {"attempt": attempt, "sleep_s": sleep_s, **tags}
             if (
-                event == "retry"
+                event == EventName.RETRY.value
                 and classification is not None
                 and classification.retry_after_s is not None
             ):
@@ -182,7 +200,7 @@ class _RetryState:
         if limit is not None and self.per_class_counts[klass] > limit:
             self.last_stop_reason = StopReason.MAX_ATTEMPTS_PER_CLASS
             self.emit(
-                "max_attempts_exceeded",
+                EventName.MAX_ATTEMPTS_EXCEEDED.value,
                 attempt,
                 0.0,
                 klass,
@@ -195,7 +213,7 @@ class _RetryState:
         if klass in (ErrorClass.PERMANENT, ErrorClass.AUTH, ErrorClass.PERMISSION):
             self.last_stop_reason = StopReason.NON_RETRYABLE_CLASS
             self.emit(
-                "permanent_fail",
+                EventName.PERMANENT_FAIL.value,
                 attempt,
                 0.0,
                 klass,
@@ -213,7 +231,7 @@ class _RetryState:
             ):
                 self.last_stop_reason = StopReason.MAX_UNKNOWN_ATTEMPTS
                 self.emit(
-                    "max_unknown_attempts_exceeded",
+                    EventName.MAX_UNKNOWN_ATTEMPTS_EXCEEDED.value,
                     attempt,
                     0.0,
                     klass,
@@ -226,7 +244,7 @@ class _RetryState:
         if self.elapsed() > self.policy.deadline:
             self.last_stop_reason = StopReason.DEADLINE_EXCEEDED
             self.emit(
-                "deadline_exceeded",
+                EventName.DEADLINE_EXCEEDED.value,
                 attempt,
                 0.0,
                 klass,
@@ -240,7 +258,7 @@ class _RetryState:
         if strategy is None:
             self.last_stop_reason = StopReason.NO_STRATEGY
             self.emit(
-                "no_strategy_configured",
+                EventName.NO_STRATEGY_CONFIGURED.value,
                 attempt,
                 0.0,
                 klass,
@@ -255,7 +273,7 @@ class _RetryState:
         if remaining_s <= 0:
             self.last_stop_reason = StopReason.DEADLINE_EXCEEDED
             self.emit(
-                "deadline_exceeded",
+                EventName.DEADLINE_EXCEEDED.value,
                 attempt,
                 0.0,
                 klass,
@@ -281,7 +299,7 @@ class _RetryState:
         sleep_s = min(sleep_s, remaining_s)
         self.prev_sleep = sleep_s
         self.emit(
-            "retry",
+            EventName.RETRY.value,
             attempt,
             sleep_s,
             klass,

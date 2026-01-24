@@ -23,7 +23,7 @@ class _BaseRetryPolicy:
     ) -> None:
         if strategies is None and strategy is None:
             raise ValueError(
-                "Retry requires either a default 'strategy' or a " "'strategies' mapping (or both)."
+                "Retry requires either a default 'strategy' or a 'strategies' mapping (or both)."
             )
 
         self.classifier: ClassifierFn = classifier

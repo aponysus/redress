@@ -240,6 +240,45 @@ async with async_policy.context(operation="batch") as retry:
     await retry(do_async_work)
 ```
 
+## Structured outcomes
+
+Use `execute()` when you want metadata without parsing hooks:
+
+```python
+outcome = policy.execute(do_work, operation="sync_task")
+
+if outcome.ok:
+    print(outcome.value, outcome.attempts)
+else:
+    print(outcome.stop_reason, outcome.last_class)
+```
+
+## Cooperative abort (shutdown/drain)
+
+Worker loops often need to stop retries when shutting down. Use `abort_if` or
+raise `AbortRetryError` inside your callable:
+
+```python
+import threading
+from redress import AbortRetryError, RetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
+
+shutdown = threading.Event()
+
+policy = RetryPolicy(
+    classifier=default_classifier,
+    strategy=decorrelated_jitter(max_s=5.0),
+)
+
+def abort_if() -> bool:
+    return shutdown.is_set()
+
+try:
+    policy.call(do_work, abort_if=abort_if)
+except AbortRetryError:
+    pass
+```
+
 ## Helper classifiers
 
 `redress.extras` provides domain-oriented classifiers:

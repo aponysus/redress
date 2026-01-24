@@ -10,12 +10,15 @@ import pytest
 from redress.circuit import CircuitBreaker, CircuitState
 from redress.classify import Classification, default_classifier
 from redress.errors import (
+    AbortRetryError,
+    CircuitOpenError,
     ErrorClass,
     PermanentError,
     RateLimitError,
     RetryExhaustedError,
     StopReason,
 )
+from redress.events import EventName
 from redress.policy import AsyncPolicy, AsyncRetry, AsyncRetryPolicy, MetricHook
 from redress.strategies import BackoffContext
 
@@ -108,10 +111,124 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert calls["n"] == 1
     assert len(events) == 1
     event, attempt, sleep_s, tags = events[0]
-    assert event == "permanent_fail"
+    assert event == EventName.PERMANENT_FAIL.value
     assert attempt == 1
     assert sleep_s == 0.0
     assert tags["class"] == ErrorClass.PERMANENT.name
+
+
+def test_async_policy_abort_if_stops_before_attempt() -> None:
+    calls = {"func": 0, "classifier": 0}
+
+    async def func() -> None:
+        calls["func"] += 1
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        calls["classifier"] += 1
+        return ErrorClass.TRANSIENT
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        asyncio.run(policy.call(func, abort_if=lambda: True))
+
+    assert calls["func"] == 0
+    assert calls["classifier"] == 0
+
+
+def test_async_policy_abort_if_skips_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"func": 0}
+
+    async def func() -> None:
+        calls["func"] += 1
+        raise RateLimitError("429")
+
+    checks = iter([False, False, True])
+
+    def abort_if() -> bool:
+        return next(checks)
+
+    slept = {"called": False}
+
+    async def fake_sleep(_: float) -> None:
+        slept["called"] = True
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", fake_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        strategy=lambda ctx: 1.0,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        asyncio.run(policy.call(func, abort_if=abort_if))
+
+    assert calls["func"] == 1
+    assert slept["called"] is False
+
+
+def test_async_policy_execute_success_after_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    async def func() -> str:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RateLimitError("429")
+        return "ok"
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=5,
+    )
+
+    outcome = asyncio.run(policy.execute(func))
+    assert outcome.ok is True
+    assert outcome.value == "ok"
+    assert outcome.attempts == 3
+    assert outcome.stop_reason is None
+
+
+def test_async_policy_execute_result_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def func() -> str:
+        return "bad"
+
+    def result_classifier(_: str) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=1,
+    )
+
+    outcome = asyncio.run(policy.execute(func))
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert outcome.attempts == 1
+    assert outcome.cause == "result"
+    assert outcome.last_result == "bad"
 
 
 def test_async_context_strategy_receives_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -657,3 +774,158 @@ def test_async_policy_breaker_without_retry_uses_default_classifier() -> None:
         asyncio.run(policy.call(fail))
 
     assert breaker.state is CircuitState.OPEN
+
+
+def test_async_policy_execute_no_retry_failure_emits_breaker_event() -> None:
+    class WeirdError(Exception):
+        pass
+
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+
+    policy = AsyncPolicy(circuit_breaker=breaker)
+    metric_hook, events = _collect_metrics()
+
+    async def fail() -> None:
+        raise WeirdError("boom")
+
+    outcome = asyncio.run(policy.execute(fail, on_metric=metric_hook, operation="op"))
+
+    assert outcome.ok is False
+    assert outcome.attempts == 1
+    assert isinstance(outcome.last_exception, WeirdError)
+    assert outcome.last_class is ErrorClass.UNKNOWN
+    assert outcome.cause == "exception"
+    assert breaker.state is CircuitState.OPEN
+
+    opened_tags = next(tags for event, _, _, tags in events if event == "circuit_opened")
+    assert opened_tags["state"] == CircuitState.OPEN.value
+    assert opened_tags["operation"] == "op"
+
+
+def test_async_policy_execute_breaker_rejected_returns_outcome() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+    breaker.record_failure(ErrorClass.UNKNOWN)
+
+    policy = AsyncPolicy(circuit_breaker=breaker)
+    metric_hook, events = _collect_metrics()
+
+    async def ok() -> str:
+        return "ok"
+
+    outcome = asyncio.run(policy.execute(ok, on_metric=metric_hook, operation="op"))
+
+    assert outcome.ok is False
+    assert outcome.attempts == 0
+    assert isinstance(outcome.last_exception, CircuitOpenError)
+    assert breaker.state is CircuitState.OPEN
+
+    rejected_tags = next(tags for event, _, _, tags in events if event == "circuit_rejected")
+    assert rejected_tags["state"] == CircuitState.OPEN.value
+    assert rejected_tags["operation"] == "op"
+
+
+def test_async_policy_execute_with_retry_aborted_records_cancel() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    called = {"n": 0}
+    original = breaker.record_cancel
+
+    def record_cancel() -> None:
+        called["n"] += 1
+        original()
+
+    breaker.record_cancel = record_cancel  # type: ignore[assignment]
+
+    policy = AsyncPolicy(
+        retry=AsyncRetry(
+            classifier=default_classifier,
+            strategy=_no_sleep_strategy,
+            max_attempts=3,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    async def ok() -> str:
+        return "ok"
+
+    outcome = asyncio.run(policy.execute(ok, abort_if=lambda: True))
+
+    assert outcome.stop_reason is StopReason.ABORTED
+    assert outcome.attempts == 0
+    assert called["n"] == 1
+
+
+def test_async_policy_execute_no_retry_success() -> None:
+    policy = AsyncPolicy()
+
+    async def ok() -> str:
+        return "ok"
+
+    outcome = asyncio.run(policy.execute(ok))
+
+    assert outcome.ok is True
+    assert outcome.value == "ok"
+    assert outcome.attempts == 1
+
+
+def test_async_policy_execute_no_retry_abort_if_returns_outcome() -> None:
+    policy = AsyncPolicy()
+
+    async def ok() -> str:
+        return "ok"
+
+    outcome = asyncio.run(policy.execute(ok, abort_if=lambda: True))
+
+    assert outcome.stop_reason is StopReason.ABORTED
+    assert outcome.attempts == 0
+
+
+def test_async_policy_call_no_retry_abort_if_raises() -> None:
+    policy = AsyncPolicy()
+
+    async def ok() -> str:
+        return "ok"
+
+    with pytest.raises(AbortRetryError):
+        asyncio.run(policy.call(ok, abort_if=lambda: True))
+
+
+def test_async_policy_call_no_retry_abort_if_records_cancel() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+    )
+    called = {"n": 0}
+    original = breaker.record_cancel
+
+    def record_cancel() -> None:
+        called["n"] += 1
+        original()
+
+    breaker.record_cancel = record_cancel  # type: ignore[assignment]
+
+    policy = AsyncPolicy(circuit_breaker=breaker)
+
+    async def ok() -> str:
+        return "ok"
+
+    with pytest.raises(AbortRetryError):
+        asyncio.run(policy.call(ok, abort_if=lambda: True))
+
+    assert called["n"] == 1

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from .errors import ErrorClass
+from .events import EventName
 
 
 class CircuitState(str, Enum):
@@ -86,12 +87,16 @@ class CircuitBreaker:
                 if now - opened_at >= self._recovery_timeout_s:
                     self._state = CircuitState.HALF_OPEN
                     self._probe_in_flight = True
-                    return _BreakerDecision(True, self._state, "circuit_half_open")
-                return _BreakerDecision(False, self._state, "circuit_rejected")
+                    return _BreakerDecision(True, self._state, EventName.CIRCUIT_HALF_OPEN.value)
+                return _BreakerDecision(False, self._state, EventName.CIRCUIT_REJECTED.value)
 
             if self._state is CircuitState.HALF_OPEN:
                 if self._probe_in_flight:
-                    return _BreakerDecision(False, self._state, "circuit_rejected")
+                    return _BreakerDecision(
+                        False,
+                        self._state,
+                        EventName.CIRCUIT_REJECTED.value,
+                    )
                 self._probe_in_flight = True
                 return _BreakerDecision(True, self._state, None)
 
@@ -104,7 +109,7 @@ class CircuitBreaker:
                 self._opened_at = None
                 self._probe_in_flight = False
                 self._clear_failures()
-                return "circuit_closed"
+                return EventName.CIRCUIT_CLOSED.value
             return None
 
     def record_failure(self, klass: ErrorClass) -> str | None:
@@ -115,7 +120,7 @@ class CircuitBreaker:
                 self._opened_at = now
                 self._probe_in_flight = False
                 self._clear_failures()
-                return "circuit_opened"
+                return EventName.CIRCUIT_OPENED.value
 
             if self._state is CircuitState.OPEN:
                 return None
@@ -128,7 +133,7 @@ class CircuitBreaker:
                 self._state = CircuitState.OPEN
                 self._opened_at = now
                 self._clear_failures()
-                return "circuit_opened"
+                return EventName.CIRCUIT_OPENED.value
             return None
 
     def record_cancel(self) -> None:

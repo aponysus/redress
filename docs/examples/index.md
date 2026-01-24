@@ -6,6 +6,12 @@
 - Shows per-class strategies (tighter backoff for 429s) and metric hook logging.
 - Run: `uv pip install httpx` then `uv run python docs/snippets/httpx_sync_retry.py`.
 
+## HTTPX Retry-After (sync)
+
+- Snippet: `docs/snippets/httpx_retry_after.py`
+- Uses result-based retries with Retry-After metadata and a fallback jitter strategy.
+- Run: `uv pip install httpx` then `uv run python docs/snippets/httpx_retry_after.py`.
+
 ## requests (sync)
 
 - Snippet: `docs/snippets/requests_retry.py`
@@ -23,6 +29,12 @@
 - Snippet: `docs/snippets/async_worker_retry.py`
 - Simulates a message worker with retries and metrics per message.
 - Run: `uv run python docs/snippets/async_worker_retry.py`.
+
+## Async worker with cooperative abort
+
+- Snippet: `docs/snippets/async_worker_abort.py`
+- Shows `abort_if` for shutdown and `on_log` for durable attempt logging.
+- Run: `uv run python docs/snippets/async_worker_abort.py`.
 
 ## Async Postgres (asyncpg)
 

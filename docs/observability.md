@@ -9,6 +9,8 @@ Hook failures are swallowed so they never break the workload; log adapter errors
 
 ## Events
 
+Event names are exported as `redress.events.EventName` (values shown below).
+
 - `success` – call succeeded
 - `retry` – retry scheduled (includes `sleep_s`)
 - `permanent_fail` – non-retriable class (`PERMANENT`, `AUTH`, `PERMISSION`)
@@ -16,6 +18,7 @@ Hook failures are swallowed so they never break the workload; log adapter errors
 - `max_attempts_exceeded` – global or per-class cap reached
 - `max_unknown_attempts_exceeded` – UNKNOWN-specific cap reached
 - `no_strategy_configured` – missing strategy for a retryable class
+- `aborted` – retry aborted via abort_if or AbortRetryError
 - `circuit_opened` – circuit breaker transitions to open
 - `circuit_half_open` – circuit breaker transitions to half-open
 - `circuit_closed` – circuit breaker transitions to closed
@@ -23,6 +26,7 @@ Hook failures are swallowed so they never break the workload; log adapter errors
 
 Attempts are 1-based. `sleep_s` is the scheduled delay for retries, otherwise 0.0.
 Breaker events use `attempt=0` and `sleep_s=0.0`.
+Abort events use the number of completed attempts (0 if aborted before the first).
 For result-driven failures, `err` is omitted and `cause="result"` is included.
 
 ## Stop reasons (terminal only)
@@ -62,19 +66,34 @@ policy.call(
 
 Counter should expose `.labels(event=..., **tags).inc()`.
 
-## OTEL pattern (pseudo-code)
+## OpenTelemetry hooks
 
 ```python
-from redress.metrics import otel_metric_hook
+from opentelemetry import metrics, trace
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.trace import TracerProvider
+from redress.contrib.otel import otel_hooks
+
+trace.set_tracer_provider(TracerProvider())
+metrics.set_meter_provider(MeterProvider())
+
+hooks = otel_hooks(
+    tracer=trace.get_tracer("redress"),
+    meter=metrics.get_meter("redress"),
+)
 
 policy.call(
     lambda: do_work(),
-    on_metric=otel_metric_hook(meter, name="redress_attempts"),
+    **hooks,
     operation="sync_user",
 )
 ```
 
-Meter counter should support `.add(1, attributes=attributes)`.
+`otel_hooks` emits spans with attempt events plus metrics:
+`redress.retries`, `redress.retry.duration`, `redress.retry.success_after_retries`,
+and `redress.circuit.state`. Attributes include `error.class`, `retry.attempt`,
+and `operation`. It requires `opentelemetry-api` (and the SDK if you set
+providers directly).
 
 ## Testing hooks
 
@@ -115,7 +134,7 @@ def do_work():
     ...
 ```
 
-## OTEL counter example (pseudo-code)
+## OpenTelemetry metric-only hook
 
 ```python
 from redress.metrics import otel_metric_hook

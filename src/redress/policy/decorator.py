@@ -7,7 +7,7 @@ from ..classify import default_classifier
 from ..config import ResultClassifierFn
 from ..errors import ErrorClass
 from ..strategies import StrategyFn, decorrelated_jitter
-from .types import ClassifierFn, LogHook, MetricHook, P, T
+from .types import AbortPredicate, ClassifierFn, LogHook, MetricHook, P, T
 from .wrappers import AsyncRetryPolicy, RetryPolicy
 
 
@@ -26,6 +26,7 @@ def retry(
     on_metric: MetricHook | None = ...,
     on_log: LogHook | None = ...,
     operation: str | None = ...,
+    abort_if: AbortPredicate | None = ...,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
@@ -44,6 +45,7 @@ def retry(
     on_metric: MetricHook | None = ...,
     on_log: LogHook | None = ...,
     operation: str | None = ...,
+    abort_if: AbortPredicate | None = ...,
 ) -> Callable[P, T]: ...
 
 
@@ -61,6 +63,7 @@ def retry(
     on_metric: MetricHook | None = None,
     on_log: LogHook | None = None,
     operation: str | None = None,
+    abort_if: AbortPredicate | None = None,
 ) -> Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T]:
     """
     Decorator that wraps a function in a RetryPolicy (sync) or AsyncRetryPolicy (async).
@@ -76,6 +79,8 @@ def retry(
 
     If neither `strategy` nor `strategies` is provided, a default
     decorrelated_jitter(max_s=5.0) strategy is injected.
+
+    abort_if can be used to cooperatively stop retry execution.
     """
 
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
@@ -105,6 +110,7 @@ def retry(
                     on_metric=on_metric,
                     on_log=on_log,
                     operation=op_name,
+                    abort_if=abort_if,
                 )
                 return cast(T, result)
 
@@ -128,6 +134,7 @@ def retry(
                 on_metric=on_metric,
                 on_log=on_log,
                 operation=op_name,
+                abort_if=abort_if,
             )
             return cast(T, result)
 
