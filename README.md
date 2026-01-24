@@ -138,6 +138,9 @@ Classification rules:
 - Explicit redress error types  
 - Numeric codes (`err.status` or `err.code`)  
 - Name heuristics  
+
+Name heuristics are a convenience for quick starts; for production, prefer a domain-specific
+classifier (HTTP/DB/etc.) or `strict_classifier` to avoid surprises.
 - Fallback to UNKNOWN  
 
 ## Metrics & Observability

@@ -140,6 +140,10 @@ async with async_policy.context(operation="batch") as retry:
 - `http_classifier` – maps HTTP status codes (e.g., 429→RATE_LIMIT, 500→SERVER_ERROR, 408→TRANSIENT).
 - `sqlstate_classifier` – maps SQLSTATE codes (e.g., 40001/40P01→CONCURRENCY, HYT00/08xxx→TRANSIENT, 28xxx→AUTH).
 
+`default_classifier` includes name-based heuristics for convenience. If you want more predictable
+behavior, use `strict_classifier` (same logic without name heuristics) or supply your own
+domain-specific classifier.
+
 ## PyODBC classification example
 
 `redress` stays dependency-free, so database-specific classifiers live in docs. See `docs/snippets/pyodbc_classifier.py` for a SQLSTATE-based mapper.

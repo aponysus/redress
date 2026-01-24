@@ -1,4 +1,4 @@
-from .classify import default_classifier
+from .classify import default_classifier, strict_classifier
 from .config import RetryConfig
 from .contrib.pyodbc import pyodbc_classifier
 from .errors import ConcurrencyError, ErrorClass, PermanentError, RateLimitError, ServerError
@@ -20,6 +20,7 @@ __all__ = [
     "equal_jitter",
     "token_backoff",
     "default_classifier",
+    "strict_classifier",
     "http_classifier",
     "sqlstate_classifier",
     "pyodbc_classifier",

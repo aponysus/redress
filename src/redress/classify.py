@@ -7,6 +7,46 @@ from .errors import (
 )
 
 
+def _classify(err: BaseException, *, use_name_heuristics: bool) -> ErrorClass:
+    if isinstance(err, PermanentError):
+        return ErrorClass.PERMANENT
+    if isinstance(err, RateLimitError):
+        return ErrorClass.RATE_LIMIT
+    if isinstance(err, ConcurrencyError):
+        return ErrorClass.CONCURRENCY
+    if isinstance(err, ServerError):
+        return ErrorClass.SERVER_ERROR
+
+    code = getattr(err, "status", None) or getattr(err, "code", None)
+
+    if isinstance(code, int):
+        if code == 401:
+            return ErrorClass.AUTH
+        if code == 403:
+            return ErrorClass.PERMISSION
+        if code in (400, 404, 422):
+            return ErrorClass.PERMANENT
+        if code == 409:
+            return ErrorClass.CONCURRENCY
+        if code == 408:
+            return ErrorClass.TRANSIENT
+        if code == 429:
+            return ErrorClass.RATE_LIMIT
+        if 500 <= code < 600:
+            return ErrorClass.SERVER_ERROR
+
+    if use_name_heuristics:
+        name = type(err).__name__.lower()
+        if "auth" in name or "unauthoriz" in name or "credential" in name:
+            return ErrorClass.AUTH
+        if "forbid" in name or "permission" in name:
+            return ErrorClass.PERMISSION
+        if "timeout" in name or "connection" in name:
+            return ErrorClass.TRANSIENT
+
+    return ErrorClass.UNKNOWN
+
+
 def default_classifier(err: BaseException) -> ErrorClass:
     """
     Map an exception into a coarse ErrorClass.
@@ -37,41 +77,15 @@ def default_classifier(err: BaseException) -> ErrorClass:
 
       4. Fallback:
          - UNKNOWN
+
+    Name-based heuristics are best-effort; use strict_classifier for a
+    predictable mapping that skips them.
     """
+    return _classify(err, use_name_heuristics=True)
 
-    if isinstance(err, PermanentError):
-        return ErrorClass.PERMANENT
-    if isinstance(err, RateLimitError):
-        return ErrorClass.RATE_LIMIT
-    if isinstance(err, ConcurrencyError):
-        return ErrorClass.CONCURRENCY
-    if isinstance(err, ServerError):
-        return ErrorClass.SERVER_ERROR
 
-    code = getattr(err, "status", None) or getattr(err, "code", None)
-
-    if isinstance(code, int):
-        if code == 401:
-            return ErrorClass.AUTH
-        if code == 403:
-            return ErrorClass.PERMISSION
-        if code in (400, 404, 422):
-            return ErrorClass.PERMANENT
-        if code == 409:
-            return ErrorClass.CONCURRENCY
-        if code == 408:
-            return ErrorClass.TRANSIENT
-        if code == 429:
-            return ErrorClass.RATE_LIMIT
-        if 500 <= code < 600:
-            return ErrorClass.SERVER_ERROR
-
-    name = type(err).__name__.lower()
-    if "auth" in name or "unauthoriz" in name or "credential" in name:
-        return ErrorClass.AUTH
-    if "forbid" in name or "permission" in name:
-        return ErrorClass.PERMISSION
-    if "timeout" in name or "connection" in name:
-        return ErrorClass.TRANSIENT
-
-    return ErrorClass.UNKNOWN
+def strict_classifier(err: BaseException) -> ErrorClass:
+    """
+    Map an exception into a coarse ErrorClass without name-based heuristics.
+    """
+    return _classify(err, use_name_heuristics=False)

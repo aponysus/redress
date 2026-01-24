@@ -102,6 +102,40 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert tags["class"] == ErrorClass.PERMANENT.name
 
 
+def test_async_cancelled_error_propagates_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
+    metric_hook, events = _collect_metrics()
+    sleep_calls: list[float] = []
+    orig_sleep = asyncio.sleep
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", fake_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    async def func() -> str:
+        await asyncio.Event().wait()
+        return "ok"
+
+    async def run() -> None:
+        task = asyncio.create_task(policy.call(func, on_metric=metric_hook))
+        await orig_sleep(0)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, timeout=0.5)
+
+    asyncio.run(run())
+
+    assert events == []
+    assert sleep_calls == []
+
+
 def test_async_deadline_exceeded_reraises_last_exception(monkeypatch: pytest.MonkeyPatch) -> None:
     class SlowError(Exception):
         pass
