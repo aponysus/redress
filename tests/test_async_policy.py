@@ -102,6 +102,46 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert tags["class"] == ErrorClass.PERMANENT.name
 
 
+def test_async_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    class TransientError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    async def func() -> None:
+        calls["n"] += 1
+        raise TransientError("boom")
+
+    metric_hook, events = _collect_metrics()
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", fake_sleep)
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=None,
+        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        deadline_s=30.0,
+        max_attempts=5,
+    )
+
+    with pytest.raises(TransientError):
+        asyncio.run(policy.call(func, on_metric=metric_hook))
+
+    assert calls["n"] == 1
+    assert sleep_calls == []
+    assert events and events[0][0] == "no_strategy_configured"
+    assert events[0][3]["class"] == ErrorClass.TRANSIENT.name
+    assert events[0][3]["err"] == "TransientError"
+
+
 def test_async_cancelled_error_propagates_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     metric_hook, events = _collect_metrics()
     sleep_calls: list[float] = []

@@ -198,6 +198,40 @@ def test_permission_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     assert tags["err"] == "ForbiddenError"
 
 
+def test_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    class TransientError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    def func() -> None:
+        calls["n"] += 1
+        raise TransientError("boom")
+
+    metric_hook, events = _collect_metrics()
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=None,
+        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        deadline_s=30.0,
+        max_attempts=5,
+    )
+
+    with pytest.raises(TransientError):
+        policy.call(func, on_metric=metric_hook)
+
+    assert calls["n"] == 1
+    assert events and events[0][0] == "no_strategy_configured"
+    assert events[0][3]["class"] == ErrorClass.TRANSIENT.name
+    assert events[0][3]["err"] == "TransientError"
+
+
 def test_keyboard_interrupt_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
     def func() -> None:
         raise KeyboardInterrupt("stop")

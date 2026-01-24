@@ -45,11 +45,8 @@ class _BaseRetryPolicy:
         self.max_unknown_attempts: int | None = max_unknown_attempts
         self.per_class_max_attempts: dict[ErrorClass, int] = dict(per_class_max_attempts or {})
 
-    def _select_strategy(self, klass: ErrorClass) -> StrategyFn:
-        strategy = self._strategies.get(klass, self._default_strategy)
-        if strategy is None:
-            raise RuntimeError(f"No backoff strategy configured for {klass!r}")
-        return strategy
+    def _select_strategy(self, klass: ErrorClass) -> StrategyFn | None:
+        return self._strategies.get(klass, self._default_strategy)
 
 
 @dataclass(frozen=True)
@@ -149,6 +146,9 @@ class _RetryState:
             return _RetryDecision("raise")
 
         strategy = self.policy._select_strategy(klass)
+        if strategy is None:
+            self.emit("no_strategy_configured", attempt, 0.0, klass, exc)
+            return _RetryDecision("raise")
         sleep_s = strategy(attempt, klass, self.prev_sleep)
 
         remaining = self.policy.deadline - self.elapsed()
@@ -338,6 +338,7 @@ class RetryPolicy(_BaseRetryPolicy):
               * "permanent_fail"       – PERMANENT/AUTH/PERMISSION classes, no retry
               * "deadline_exceeded"    – wall-clock deadline exceeded
               * "retry"                – a retry is scheduled
+              * "no_strategy_configured" – missing strategy for a retryable class
               * "max_attempts_exceeded"– we hit max_attempts and re-raise with
                 the original traceback
               * "max_unknown_attempts_exceeded" – UNKNOWN cap hit
