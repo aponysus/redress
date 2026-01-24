@@ -4,11 +4,11 @@ from typing import Any
 
 from ..circuit import CircuitBreaker, CircuitState
 from ..classify import default_classifier
-from ..errors import CircuitOpenError, ErrorClass, RetryExhaustedError
+from ..errors import AbortRetryError, CircuitOpenError, ErrorClass, RetryExhaustedError
 from .base import _normalize_classification
 from .context import _AsyncPolicyContext, _PolicyContext
 from .retry import AsyncRetry, Retry
-from .types import LogHook, MetricHook, T
+from .types import AbortPredicate, LogHook, MetricHook, T
 
 
 def _emit_breaker_event(
@@ -61,6 +61,7 @@ class Policy:
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> Any:
         breaker = self.circuit_breaker
         if breaker is not None:
@@ -86,6 +87,7 @@ class Policy:
                     on_metric=on_metric,
                     on_log=on_log,
                     operation=operation,
+                    abort_if=abort_if,
                 )
             if breaker is not None:
                 event = breaker.record_success()
@@ -100,6 +102,10 @@ class Policy:
                     )
             return result
         except (KeyboardInterrupt, SystemExit):
+            if breaker is not None:
+                breaker.record_cancel()
+            raise
+        except AbortRetryError:
             if breaker is not None:
                 breaker.record_cancel()
             raise
@@ -143,11 +149,12 @@ class Policy:
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> _PolicyContext:
         """
         Context manager that binds hooks/operation for multiple calls.
         """
-        return _PolicyContext(self, on_metric, on_log, operation)
+        return _PolicyContext(self, on_metric, on_log, operation, abort_if)
 
 
 class AsyncPolicy:
@@ -171,6 +178,7 @@ class AsyncPolicy:
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> T:
         breaker = self.circuit_breaker
         if breaker is not None:
@@ -196,6 +204,7 @@ class AsyncPolicy:
                     on_metric=on_metric,
                     on_log=on_log,
                     operation=operation,
+                    abort_if=abort_if,
                 )
             if breaker is not None:
                 event = breaker.record_success()
@@ -214,6 +223,10 @@ class AsyncPolicy:
                 breaker.record_cancel()
             raise
         except (KeyboardInterrupt, SystemExit):
+            if breaker is not None:
+                breaker.record_cancel()
+            raise
+        except AbortRetryError:
             if breaker is not None:
                 breaker.record_cancel()
             raise
@@ -257,8 +270,9 @@ class AsyncPolicy:
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> _AsyncPolicyContext:
         """
         Async context manager that binds hooks/operation for multiple calls.
         """
-        return _AsyncPolicyContext(self, on_metric, on_log, operation)
+        return _AsyncPolicyContext(self, on_metric, on_log, operation, abort_if)

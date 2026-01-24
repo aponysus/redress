@@ -25,9 +25,7 @@ class _FakeTracer:
     def __init__(self) -> None:
         self.spans: list[_FakeSpan] = []
 
-    def start_span(
-        self, name: str, *, attributes: Mapping[str, object] | None = None
-    ) -> _FakeSpan:
+    def start_span(self, name: str, *, attributes: Mapping[str, object] | None = None) -> _FakeSpan:
         span = _FakeSpan(name, attributes)
         self.spans.append(span)
         return span
@@ -47,7 +45,9 @@ class _FakeHistogram:
         self.name = name
         self.calls: list[dict[str, object]] = []
 
-    def record(self, amount: int | float, *, attributes: Mapping[str, object] | None = None) -> None:
+    def record(
+        self, amount: int | float, *, attributes: Mapping[str, object] | None = None
+    ) -> None:
         self.calls.append({"amount": amount, "attributes": dict(attributes or {})})
 
 

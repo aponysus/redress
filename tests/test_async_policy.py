@@ -10,6 +10,7 @@ import pytest
 from redress.circuit import CircuitBreaker, CircuitState
 from redress.classify import Classification, default_classifier
 from redress.errors import (
+    AbortRetryError,
     ErrorClass,
     PermanentError,
     RateLimitError,
@@ -112,6 +113,64 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert attempt == 1
     assert sleep_s == 0.0
     assert tags["class"] == ErrorClass.PERMANENT.name
+
+
+def test_async_policy_abort_if_stops_before_attempt() -> None:
+    calls = {"func": 0, "classifier": 0}
+
+    async def func() -> None:
+        calls["func"] += 1
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        calls["classifier"] += 1
+        return ErrorClass.TRANSIENT
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        asyncio.run(policy.call(func, abort_if=lambda: True))
+
+    assert calls["func"] == 0
+    assert calls["classifier"] == 0
+
+
+def test_async_policy_abort_if_skips_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"func": 0}
+
+    async def func() -> None:
+        calls["func"] += 1
+        raise RateLimitError("429")
+
+    checks = iter([False, False, True])
+
+    def abort_if() -> bool:
+        return next(checks)
+
+    slept = {"called": False}
+
+    async def fake_sleep(_: float) -> None:
+        slept["called"] = True
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", fake_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        strategy=lambda ctx: 1.0,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        asyncio.run(policy.call(func, abort_if=abort_if))
+
+    assert calls["func"] == 1
+    assert slept["called"] is False
 
 
 def test_async_context_strategy_receives_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:

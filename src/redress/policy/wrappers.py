@@ -6,7 +6,7 @@ from ..errors import ErrorClass
 from ..strategies import StrategyFn
 from .container import AsyncPolicy, Policy
 from .retry import AsyncRetry, Retry
-from .types import ClassifierFn, LogHook, MetricHook, T
+from .types import AbortPredicate, ClassifierFn, LogHook, MetricHook, T
 
 
 class RetryPolicy:
@@ -78,12 +78,14 @@ class RetryPolicy:
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> Any:
         return self._policy.call(
             func,
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
+            abort_if=abort_if,
         )
 
     def context(
@@ -92,11 +94,13 @@ class RetryPolicy:
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> Any:
         return self._policy.context(
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
+            abort_if=abort_if,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -184,12 +188,14 @@ class AsyncRetryPolicy:
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> T:
         return await self._policy.call(
             func,
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
+            abort_if=abort_if,
         )
 
     def context(
@@ -198,11 +204,13 @@ class AsyncRetryPolicy:
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> Any:
         return self._policy.context(
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
+            abort_if=abort_if,
         )
 
     def __getattr__(self, name: str) -> Any:

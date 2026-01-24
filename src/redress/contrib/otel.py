@@ -17,9 +17,7 @@ class OtelSpan(Protocol):
 
 
 class OtelTracer(Protocol):
-    def start_span(
-        self, name: str, *, attributes: Mapping[str, Any] | None = None
-    ) -> OtelSpan: ...
+    def start_span(self, name: str, *, attributes: Mapping[str, Any] | None = None) -> OtelSpan: ...
 
 
 class OtelCounter(Protocol):
@@ -27,7 +25,9 @@ class OtelCounter(Protocol):
 
 
 class OtelHistogram(Protocol):
-    def record(self, amount: int | float, *, attributes: Mapping[str, Any] | None = None) -> None: ...
+    def record(
+        self, amount: int | float, *, attributes: Mapping[str, Any] | None = None
+    ) -> None: ...
 
 
 class OtelMeter(Protocol):
@@ -43,6 +43,7 @@ _TERMINAL_EVENTS = {
     "max_attempts_exceeded",
     "max_unknown_attempts_exceeded",
     "no_strategy_configured",
+    "aborted",
 }
 
 _CIRCUIT_EVENTS = {

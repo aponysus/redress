@@ -4,12 +4,12 @@ from collections.abc import Awaitable, Callable, Mapping
 from typing import Any
 
 from ..config import ResultClassifierFn, RetryConfig
-from ..errors import ErrorClass, RetryExhaustedError, StopReason
+from ..errors import AbortRetryError, ErrorClass, RetryExhaustedError, StopReason
 from ..strategies import StrategyFn
 from .base import _BaseRetryPolicy, _normalize_classification
 from .context import _AsyncRetryContext, _RetryContext
 from .state import _RetryState
-from .types import ClassifierFn, LogHook, MetricHook, T
+from .types import AbortPredicate, ClassifierFn, LogHook, MetricHook, T
 
 
 class Retry(_BaseRetryPolicy):
@@ -124,6 +124,7 @@ class Retry(_BaseRetryPolicy):
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> Any:
         """
         Execute `func` with retries according to this policy.
@@ -177,6 +178,11 @@ class Retry(_BaseRetryPolicy):
             Optional logical name for the action being retried (e.g.,
             "fetch_user_profile"). Propagated into tags for metrics/logging.
 
+        abort_if:
+            Optional predicate checked before attempts and before sleeping.
+            When it returns True, retries stop immediately and AbortRetryError
+            is raised.
+
         Returns
         -------
         Any
@@ -192,15 +198,20 @@ class Retry(_BaseRetryPolicy):
         RetryExhaustedError
             Raised when retries stop due to a result-based failure (no
             exception was thrown).
+
+        AbortRetryError
+            Raised when abort_if returns True or the user raises AbortRetryError.
         """
         state = _RetryState(
             policy=self,
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
+            abort_if=abort_if,
         )
 
         for attempt in range(1, self.max_attempts + 1):
+            state.check_abort(attempt - 1)
             try:
                 result = func()
                 if self.result_classifier is None:
@@ -212,6 +223,7 @@ class Retry(_BaseRetryPolicy):
                     state.emit("success", attempt, 0.0)
                     return result
 
+                state.check_abort(attempt)
                 classification = _normalize_classification(classification_result)
                 decision = state.handle_result(result, classification, attempt)
                 if decision.action == "raise":
@@ -224,6 +236,7 @@ class Retry(_BaseRetryPolicy):
                         last_result=state.last_result,
                     )
 
+                state.check_abort(attempt)
                 time.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
@@ -266,6 +279,16 @@ class Retry(_BaseRetryPolicy):
                         last_result=state.last_result,
                     )
 
+            except AbortRetryError:
+                if state.last_stop_reason is not StopReason.ABORTED:
+                    state.last_stop_reason = StopReason.ABORTED
+                    state.emit(
+                        "aborted",
+                        attempt,
+                        0.0,
+                        stop_reason=StopReason.ABORTED,
+                    )
+                raise
             except asyncio.CancelledError:
                 raise
             except (KeyboardInterrupt, SystemExit):
@@ -273,10 +296,12 @@ class Retry(_BaseRetryPolicy):
             except RetryExhaustedError:
                 raise
             except Exception as exc:
+                state.check_abort(attempt)
                 decision = state.handle_exception(exc, attempt)
                 if decision.action == "raise":
                     raise
 
+                state.check_abort(attempt)
                 time.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
@@ -336,6 +361,7 @@ class Retry(_BaseRetryPolicy):
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> _RetryContext:
         """
         Context manager that binds hooks/operation for multiple calls.
@@ -345,7 +371,7 @@ class Retry(_BaseRetryPolicy):
                 retry(fn1)
                 retry(fn2, arg1, arg2)
         """
-        return _RetryContext(self, on_metric, on_log, operation)
+        return _RetryContext(self, on_metric, on_log, operation, abort_if)
 
 
 class AsyncRetry(_BaseRetryPolicy):
@@ -381,20 +407,24 @@ class AsyncRetry(_BaseRetryPolicy):
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> T:
         """
         Execute an async function with retries according to this policy.
 
         Result-based failures raise RetryExhaustedError when retries stop.
+        abort_if can be used to cooperatively stop retry execution.
         """
         state = _RetryState(
             policy=self,
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
+            abort_if=abort_if,
         )
 
         for attempt in range(1, self.max_attempts + 1):
+            state.check_abort(attempt - 1)
             try:
                 result = await func()
                 if self.result_classifier is None:
@@ -406,6 +436,7 @@ class AsyncRetry(_BaseRetryPolicy):
                     state.emit("success", attempt, 0.0)
                     return result
 
+                state.check_abort(attempt)
                 classification = _normalize_classification(classification_result)
                 decision = state.handle_result(result, classification, attempt)
                 if decision.action == "raise":
@@ -418,6 +449,7 @@ class AsyncRetry(_BaseRetryPolicy):
                         last_result=state.last_result,
                     )
 
+                state.check_abort(attempt)
                 await asyncio.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
@@ -459,6 +491,16 @@ class AsyncRetry(_BaseRetryPolicy):
                         last_exception=None,
                         last_result=state.last_result,
                     )
+            except AbortRetryError:
+                if state.last_stop_reason is not StopReason.ABORTED:
+                    state.last_stop_reason = StopReason.ABORTED
+                    state.emit(
+                        "aborted",
+                        attempt,
+                        0.0,
+                        stop_reason=StopReason.ABORTED,
+                    )
+                raise
             except asyncio.CancelledError:
                 raise
             except (KeyboardInterrupt, SystemExit):
@@ -466,10 +508,12 @@ class AsyncRetry(_BaseRetryPolicy):
             except RetryExhaustedError:
                 raise
             except Exception as exc:
+                state.check_abort(attempt)
                 decision = state.handle_exception(exc, attempt)
                 if decision.action == "raise":
                     raise
 
+                state.check_abort(attempt)
                 await asyncio.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
@@ -528,6 +572,7 @@ class AsyncRetry(_BaseRetryPolicy):
         on_metric: MetricHook | None = None,
         on_log: LogHook | None = None,
         operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
     ) -> _AsyncRetryContext:
         """
         Async context manager that binds hooks/operation for multiple calls.
@@ -537,4 +582,4 @@ class AsyncRetry(_BaseRetryPolicy):
                 await retry(async_fn1)
                 await retry(async_fn2, arg)
         """
-        return _AsyncRetryContext(self, on_metric, on_log, operation)
+        return _AsyncRetryContext(self, on_metric, on_log, operation, abort_if)

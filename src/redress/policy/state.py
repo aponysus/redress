@@ -6,10 +6,10 @@ from datetime import timedelta
 from typing import Any, Literal
 
 from ..classify import Classification
-from ..errors import ErrorClass, StopReason
+from ..errors import AbortRetryError, ErrorClass, StopReason
 from ..strategies import BackoffContext
 from .base import _BaseRetryPolicy, _normalize_classification
-from .types import FailureCause, LogHook, MetricHook
+from .types import AbortPredicate, FailureCause, LogHook, MetricHook
 
 
 @dataclass(frozen=True)
@@ -48,11 +48,13 @@ class _RetryState:
         on_metric: MetricHook | None,
         on_log: LogHook | None,
         operation: str | None,
+        abort_if: AbortPredicate | None,
     ) -> None:
         self.policy = policy
         self.on_metric = on_metric
         self.on_log = on_log
         self.operation = operation
+        self.abort_if = abort_if
         self.start_mono = time.monotonic()
         self.prev_sleep: float | None = None
         self.last_exc: BaseException | None = None
@@ -62,6 +64,21 @@ class _RetryState:
         self.last_stop_reason: StopReason | None = None
         self.unknown_attempts: int = 0
         self.per_class_counts: dict[ErrorClass, int] = collections.defaultdict(int)
+
+    def check_abort(self, attempt: int) -> None:
+        if self.abort_if is None:
+            return
+        if not self.abort_if():
+            return
+
+        self.last_stop_reason = StopReason.ABORTED
+        self.emit(
+            "aborted",
+            attempt,
+            0.0,
+            stop_reason=StopReason.ABORTED,
+        )
+        raise AbortRetryError()
 
     def elapsed(self) -> timedelta:
         return timedelta(seconds=time.monotonic() - self.start_mono)

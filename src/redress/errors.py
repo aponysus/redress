@@ -44,6 +44,15 @@ class RetryExhaustedError(Exception):
         return f"Retry stopped: {self.stop_reason.value}"
 
 
+class AbortRetryError(Exception):
+    """
+    Raised to cooperatively abort retry execution.
+    """
+
+
+AbortRetry = AbortRetryError
+
+
 class CircuitOpenError(Exception):
     """
     Raised when a circuit breaker rejects a call.

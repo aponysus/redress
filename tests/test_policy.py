@@ -11,6 +11,7 @@ from redress.circuit import CircuitBreaker, CircuitState
 from redress.classify import Classification, default_classifier
 from redress.config import RetryConfig
 from redress.errors import (
+    AbortRetryError,
     CircuitOpenError,
     ErrorClass,
     PermanentError,
@@ -118,15 +119,71 @@ def test_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     # Only one attempt
     assert call_count["n"] == 1
 
-    # Metrics: single permanent_fail, no 'retry'
+
+def test_policy_abort_if_stops_before_attempt() -> None:
+    calls = {"func": 0, "classifier": 0}
+
+    def func() -> None:
+        calls["func"] += 1
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        calls["classifier"] += 1
+        return ErrorClass.TRANSIENT
+
+    metric_hook, events = _collect_metrics()
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        policy.call(func, on_metric=metric_hook, abort_if=lambda: True)
+
+    assert calls["func"] == 0
+    assert calls["classifier"] == 0
     assert len(events) == 1
     event, attempt, sleep_s, tags = events[0]
-    assert event == "permanent_fail"
-    assert attempt == 1
+    assert event == "aborted"
+    assert attempt == 0
     assert sleep_s == 0.0
-    assert tags["err"] == "PermanentError"
-    assert tags["class"] == ErrorClass.PERMANENT.name
-    assert tags["stop_reason"] == StopReason.NON_RETRYABLE_CLASS.value
+    assert tags["stop_reason"] == StopReason.ABORTED.value
+
+
+def test_policy_abort_if_skips_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"func": 0}
+
+    def func() -> None:
+        calls["func"] += 1
+        raise RateLimitError("429")
+
+    checks = iter([False, False, True])
+
+    def abort_if() -> bool:
+        return next(checks)
+
+    slept = {"called": False}
+
+    def fake_sleep(_: float) -> None:
+        slept["called"] = True
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", fake_sleep)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=lambda ctx: 1.0,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        policy.call(func, abort_if=abort_if)
+
+    assert calls["func"] == 1
+    assert slept["called"] is False
 
 
 def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:

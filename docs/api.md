@@ -4,11 +4,11 @@
 
 - `Policy`, `AsyncPolicy`
   - Unified resilience containers; use `Policy(retry=Retry(...))`
-  - `.call(func, on_metric=None, on_log=None, operation=None)`
-  - `.context(on_metric=None, on_log=None, operation=None)`
+  - `.call(func, on_metric=None, on_log=None, operation=None, abort_if=None)`
+  - `.context(on_metric=None, on_log=None, operation=None, abort_if=None)`
 - `Retry`, `AsyncRetry`
   - Retry components with `result_classifier` support
-  - `.call(...)`, `.context(...)`, `.from_config(config, classifier=...)`
+  - `.call(..., abort_if=None)`, `.context(..., abort_if=None)`, `.from_config(config, classifier=...)`
 - `RetryPolicy`, `AsyncRetryPolicy`
   - Backward-compatible sugar for `Policy(retry=Retry(...))`
 - `CircuitBreaker`
@@ -44,6 +44,7 @@
 - `CircuitOpenError` fail-fast error when breaker is open
 - `StopReason` enum
 - `RetryExhaustedError` terminal error (result-based exhaustion)
+- `AbortRetryError` cooperative abort signal (alias: `AbortRetry`)
 - Marker exceptions: `PermanentError`, `RateLimitError`, `ConcurrencyError`
 
 ## Metrics helpers

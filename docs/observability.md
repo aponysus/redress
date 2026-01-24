@@ -16,6 +16,7 @@ Hook failures are swallowed so they never break the workload; log adapter errors
 - `max_attempts_exceeded` – global or per-class cap reached
 - `max_unknown_attempts_exceeded` – UNKNOWN-specific cap reached
 - `no_strategy_configured` – missing strategy for a retryable class
+- `aborted` – retry aborted via abort_if or AbortRetryError
 - `circuit_opened` – circuit breaker transitions to open
 - `circuit_half_open` – circuit breaker transitions to half-open
 - `circuit_closed` – circuit breaker transitions to closed
@@ -23,6 +24,7 @@ Hook failures are swallowed so they never break the workload; log adapter errors
 
 Attempts are 1-based. `sleep_s` is the scheduled delay for retries, otherwise 0.0.
 Breaker events use `attempt=0` and `sleep_s=0.0`.
+Abort events use the number of completed attempts (0 if aborted before the first).
 For result-driven failures, `err` is omitted and `cause="result"` is included.
 
 ## Stop reasons (terminal only)

@@ -3,6 +3,8 @@ from .classify import Classification, default_classifier, strict_classifier
 from .config import RetryConfig
 from .contrib.pyodbc import pyodbc_classifier
 from .errors import (
+    AbortRetry,
+    AbortRetryError,
     CircuitOpenError,
     ConcurrencyError,
     ErrorClass,
@@ -43,6 +45,8 @@ __all__ = [
     "CircuitState",
     "ErrorClass",
     "CircuitOpenError",
+    "AbortRetry",
+    "AbortRetryError",
     "StopReason",
     "PermanentError",
     "RateLimitError",
