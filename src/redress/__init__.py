@@ -1,7 +1,9 @@
+from .circuit import CircuitBreaker, CircuitState
 from .classify import Classification, default_classifier, strict_classifier
 from .config import RetryConfig
 from .contrib.pyodbc import pyodbc_classifier
 from .errors import (
+    CircuitOpenError,
     ConcurrencyError,
     ErrorClass,
     PermanentError,
@@ -12,7 +14,15 @@ from .errors import (
 )
 from .extras import http_classifier, http_retry_after_classifier, sqlstate_classifier
 from .metrics import otel_metric_hook, prometheus_metric_hook
-from .policy import AsyncRetryPolicy, RetryPolicy, retry
+from .policy import (
+    AsyncPolicy,
+    AsyncRetry,
+    AsyncRetryPolicy,
+    Policy,
+    Retry,
+    RetryPolicy,
+    retry,
+)
 from .strategies import (
     BackoffContext,
     decorrelated_jitter,
@@ -23,9 +33,16 @@ from .strategies import (
 
 __all__ = [
     "AsyncRetryPolicy",
+    "AsyncPolicy",
+    "AsyncRetry",
     "RetryPolicy",
+    "Policy",
+    "Retry",
     "RetryConfig",
+    "CircuitBreaker",
+    "CircuitState",
     "ErrorClass",
+    "CircuitOpenError",
     "StopReason",
     "PermanentError",
     "RateLimitError",

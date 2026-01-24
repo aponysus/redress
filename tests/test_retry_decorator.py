@@ -2,11 +2,14 @@
 
 
 import asyncio
+import importlib
 
 import pytest
 
 from redress import retry
 from redress.errors import ErrorClass, RateLimitError
+
+_retry_mod = importlib.import_module("redress.policy.retry")
 
 
 def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:
@@ -14,7 +17,7 @@ def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:
 
 
 def test_retry_decorator_sync(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
     events: list[tuple[str, int, float, dict[str, str]]] = []
     calls = {"n": 0}
 
@@ -50,7 +53,7 @@ def test_retry_decorator_async(monkeypatch: pytest.MonkeyPatch) -> None:
     async def fake_sleep(seconds: float) -> None:
         sleep_calls.append(seconds)
 
-    monkeypatch.setattr("redress.policy.asyncio.sleep", fake_sleep)
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", fake_sleep)
     events: list[tuple[str, int, float, dict[str, str]]] = []
     calls = {"n": 0}
 
@@ -81,7 +84,7 @@ def test_retry_decorator_async(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_retry_decorator_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
     calls = {"n": 0}
 
     @retry
@@ -96,7 +99,7 @@ def test_retry_decorator_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_retry_decorator_respects_strategy_mapping_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
     calls = {"n": 0}
 
     @retry(

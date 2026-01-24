@@ -5,7 +5,7 @@ from typing import Any
 
 class ErrorClass(Enum):
     """
-    Coarse-grained error categories used by RetryPolicy and strategies.
+    Coarse-grained error categories used by Retry/RetryPolicy and strategies.
 
     This is intentionally small and generic so that:
       * You can map many different domain-specific exceptions into it.
@@ -42,6 +42,16 @@ class RetryExhaustedError(Exception):
 
     def __str__(self) -> str:
         return f"Retry stopped: {self.stop_reason.value}"
+
+
+class CircuitOpenError(Exception):
+    """
+    Raised when a circuit breaker rejects a call.
+    """
+
+    def __init__(self, state: str = "open") -> None:
+        self.state = state
+        super().__init__(f"Circuit is {state}.")
 
 
 class PermanentError(Exception):
