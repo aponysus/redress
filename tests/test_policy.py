@@ -12,6 +12,7 @@ from redress.errors import (
     ErrorClass,
     PermanentError,
     RateLimitError,
+    StopReason,
 )
 from redress.policy import MetricHook, RetryPolicy
 from redress.strategies import decorrelated_jitter
@@ -118,6 +119,7 @@ def test_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sleep_s == 0.0
     assert tags["err"] == "PermanentError"
     assert tags["class"] == ErrorClass.PERMANENT.name
+    assert tags["stop_reason"] == StopReason.NON_RETRYABLE_CLASS.value
 
 
 def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -196,6 +198,41 @@ def test_permission_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     assert sleep_s == 0.0
     assert tags["class"] == ErrorClass.PERMISSION.name
     assert tags["err"] == "ForbiddenError"
+
+
+def test_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    class TransientError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    def func() -> None:
+        calls["n"] += 1
+        raise TransientError("boom")
+
+    metric_hook, events = _collect_metrics()
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=None,
+        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        deadline_s=30.0,
+        max_attempts=5,
+    )
+
+    with pytest.raises(TransientError):
+        policy.call(func, on_metric=metric_hook)
+
+    assert calls["n"] == 1
+    assert events and events[0][0] == "no_strategy_configured"
+    assert events[0][3]["class"] == ErrorClass.TRANSIENT.name
+    assert events[0][3]["err"] == "TransientError"
+    assert events[0][3]["stop_reason"] == StopReason.NON_RETRYABLE_CLASS.value
 
 
 def test_keyboard_interrupt_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -337,6 +374,7 @@ def test_max_attempts_re_raises_last_exception(monkeypatch: pytest.MonkeyPatch) 
     assert events[-1][1] == 3
     assert events[-1][3]["err"] == "FooError"
     assert events[-1][3]["class"] == ErrorClass.TRANSIENT.name
+    assert events[-1][3]["stop_reason"] == StopReason.MAX_ATTEMPTS_GLOBAL.value
 
 
 def test_operation_and_tags_are_emitted(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -467,9 +505,12 @@ def test_hooks_are_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
     assert calls["n"] == 2
 
 
-def test_per_class_max_attempts_limits_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("limit, expected_calls", [(0, 1), (1, 2), (2, 3)])
+def test_per_class_max_attempts_limits_retries(
+    monkeypatch: pytest.MonkeyPatch, limit: int, expected_calls: int
+) -> None:
     """
-    per_class_max_attempts should cap retries for a specific error class.
+    per_class_max_attempts limits retries for a specific error class.
     """
 
     class RateLimitError(Exception):
@@ -491,7 +532,7 @@ def test_per_class_max_attempts_limits_retries(monkeypatch: pytest.MonkeyPatch) 
     policy = RetryPolicy(
         classifier=classifier,
         strategy=_no_sleep_strategy,
-        per_class_max_attempts={ErrorClass.RATE_LIMIT: 2},
+        per_class_max_attempts={ErrorClass.RATE_LIMIT: limit},
         max_attempts=10,
     )
 
@@ -500,10 +541,10 @@ def test_per_class_max_attempts_limits_retries(monkeypatch: pytest.MonkeyPatch) 
 
     _assert_tb_has_frame(excinfo.value, func.__name__)
 
-    # initial + 2 retries, then cap hit
-    assert calls["n"] == 3
+    assert calls["n"] == expected_calls
     assert events[-1][0] == "max_attempts_exceeded"
     assert events[-1][3]["class"] == ErrorClass.RATE_LIMIT.name
+    assert events[-1][3]["stop_reason"] == StopReason.MAX_ATTEMPTS_PER_CLASS.value
 
 
 def test_retry_policy_from_config_creates_equivalent_policy() -> None:
@@ -642,6 +683,8 @@ def test_unknown_errors_respect_max_unknown_attempts(monkeypatch: pytest.MonkeyP
 
     events_by_name = [e[0] for e in events]
     assert "max_unknown_attempts_exceeded" in events_by_name
+    unknown_event = next(e for e in events if e[0] == "max_unknown_attempts_exceeded")
+    assert unknown_event[3]["stop_reason"] == StopReason.MAX_UNKNOWN_ATTEMPTS.value
 
 
 # ---------------------------------------------------------------------------
@@ -690,7 +733,8 @@ def test_deadline_exceeded_stops_retries(monkeypatch: pytest.MonkeyPatch) -> Non
 
     # We should see at least one retry but stop once > 2 seconds passed.
     # Exact count depends on start, but we can check deadline_exceeded metric.
-    assert "deadline_exceeded" in [e[0] for e in events]
+    deadline_event = next(e for e in events if e[0] == "deadline_exceeded")
+    assert deadline_event[3]["stop_reason"] == StopReason.DEADLINE_EXCEEDED.value
 
 
 def test_deadline_sleep_is_capped_and_rechecked(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -745,7 +789,8 @@ def test_deadline_sleep_is_capped_and_rechecked(monkeypatch: pytest.MonkeyPatch)
     # Retry event should reflect the capped sleep duration, and deadline_exceeded should fire.
     retry_event = next(e for e in events if e[0] == "retry")
     assert retry_event[2] == pytest.approx(0.8)
-    assert "deadline_exceeded" in [e[0] for e in events]
+    deadline_event = next(e for e in events if e[0] == "deadline_exceeded")
+    assert deadline_event[3]["stop_reason"] == StopReason.DEADLINE_EXCEEDED.value
 
 
 # ---------------------------------------------------------------------------

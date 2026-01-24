@@ -1,6 +1,7 @@
 from redress.classify import default_classifier
 from redress.cli import lint_retry_config, lint_retry_policy, main
 from redress.config import RetryConfig
+from redress.errors import ErrorClass
 from redress.policy import RetryPolicy
 from redress.strategies import decorrelated_jitter
 
@@ -67,14 +68,26 @@ def test_lint_retry_config_validates_class_keys_and_limits() -> None:
     cfg = RetryConfig(
         default_strategy=decorrelated_jitter(),
         class_strategies={"not-an-error-class": lambda *_: 0.0},
-        per_class_max_attempts={"wrong-key": 0},
+        per_class_max_attempts={"wrong-key": -1},
     )
 
     errors, _ = lint_retry_config(cfg)
 
-    # Both the wrong key type and the limit < 1 should be reported.
+    # Both the wrong key type and the negative limit should be reported.
     assert any("class_strategies keys must be ErrorClass" in msg for msg in errors)
     assert any("per_class_max_attempts" in msg for msg in errors)
+
+
+def test_lint_retry_config_allows_zero_per_class_limit() -> None:
+    cfg = RetryConfig(
+        default_strategy=decorrelated_jitter(),
+        per_class_max_attempts={ErrorClass.RATE_LIMIT: 0},
+    )
+
+    errors, warnings = lint_retry_config(cfg)
+
+    assert errors == []
+    assert warnings == []
 
 
 def test_doctor_handles_missing_attribute(tmp_path, monkeypatch, capsys) -> None:

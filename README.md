@@ -66,6 +66,9 @@ def fetch_user():
 def fetch_user_custom():
     ...
 
+If you provide `strategies` without `strategy`, the decorator will not add a default
+strategy.
+
 # Context manager for repeated calls with shared hooks/operation
 policy = RetryPolicy(classifier=default_classifier, strategy=decorrelated_jitter(max_s=3.0))
 with policy.context(operation="batch") as retry:

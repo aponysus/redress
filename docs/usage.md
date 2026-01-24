@@ -23,6 +23,11 @@ policy = RetryPolicy(
 )
 ```
 
+Per-class limit semantics:
+- `0` = no retries for that class (stop on first failure)
+- `1` = one retry (two total attempts for that class)
+- `2` = two retries (three total attempts for that class)
+
 ## Using `operation` to distinguish call sites
 
 ```python
@@ -111,6 +116,10 @@ def fetch_user():
 async def fetch_user_async():
     ...
 ```
+
+If you omit both `strategy` and `strategies`, the decorator injects
+`decorrelated_jitter(max_s=5.0)` as a default. If you provide a per-class
+`strategies` mapping without a default, the decorator will not add one.
 
 Hooks and `operation` can be set on the decorator. The `operation` defaults to the function name when omitted.
 

@@ -1,7 +1,14 @@
 from .classify import default_classifier, strict_classifier
 from .config import RetryConfig
 from .contrib.pyodbc import pyodbc_classifier
-from .errors import ConcurrencyError, ErrorClass, PermanentError, RateLimitError, ServerError
+from .errors import (
+    ConcurrencyError,
+    ErrorClass,
+    PermanentError,
+    RateLimitError,
+    ServerError,
+    StopReason,
+)
 from .extras import http_classifier, sqlstate_classifier
 from .metrics import otel_metric_hook, prometheus_metric_hook
 from .policy import AsyncRetryPolicy, RetryPolicy, retry
@@ -12,6 +19,7 @@ __all__ = [
     "RetryPolicy",
     "RetryConfig",
     "ErrorClass",
+    "StopReason",
     "PermanentError",
     "RateLimitError",
     "ConcurrencyError",

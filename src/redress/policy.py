@@ -9,7 +9,7 @@ from typing import Any, Literal, ParamSpec, TypeVar, cast, overload
 
 from .classify import default_classifier
 from .config import RetryConfig
-from .errors import ErrorClass
+from .errors import ErrorClass, StopReason
 from .strategies import StrategyFn, decorrelated_jitter
 
 ClassifierFn = Callable[[BaseException], ErrorClass]
@@ -45,11 +45,8 @@ class _BaseRetryPolicy:
         self.max_unknown_attempts: int | None = max_unknown_attempts
         self.per_class_max_attempts: dict[ErrorClass, int] = dict(per_class_max_attempts or {})
 
-    def _select_strategy(self, klass: ErrorClass) -> StrategyFn:
-        strategy = self._strategies.get(klass, self._default_strategy)
-        if strategy is None:
-            raise RuntimeError(f"No backoff strategy configured for {klass!r}")
-        return strategy
+    def _select_strategy(self, klass: ErrorClass) -> StrategyFn | None:
+        return self._strategies.get(klass, self._default_strategy)
 
 
 @dataclass(frozen=True)
@@ -92,6 +89,7 @@ class _RetryState:
         sleep_s: float,
         klass: ErrorClass | None = None,
         exc: BaseException | None = None,
+        stop_reason: StopReason | None = None,
     ) -> None:
         tags: dict[str, Any] = {}
 
@@ -100,6 +98,9 @@ class _RetryState:
 
         if exc is not None:
             tags["err"] = type(exc).__name__
+
+        if stop_reason is not None:
+            tags["stop_reason"] = stop_reason.value
 
         if self.operation:
             tags["operation"] = self.operation
@@ -128,11 +129,25 @@ class _RetryState:
 
         limit = self.policy.per_class_max_attempts.get(klass)
         if limit is not None and self.per_class_counts[klass] > limit:
-            self.emit("max_attempts_exceeded", attempt, 0.0, klass, exc)
+            self.emit(
+                "max_attempts_exceeded",
+                attempt,
+                0.0,
+                klass,
+                exc,
+                stop_reason=StopReason.MAX_ATTEMPTS_PER_CLASS,
+            )
             return _RetryDecision("raise")
 
         if klass in (ErrorClass.PERMANENT, ErrorClass.AUTH, ErrorClass.PERMISSION):
-            self.emit("permanent_fail", attempt, 0.0, klass, exc)
+            self.emit(
+                "permanent_fail",
+                attempt,
+                0.0,
+                klass,
+                exc,
+                stop_reason=StopReason.NON_RETRYABLE_CLASS,
+            )
             return _RetryDecision("raise")
 
         if klass is ErrorClass.UNKNOWN:
@@ -141,19 +156,50 @@ class _RetryState:
                 self.policy.max_unknown_attempts is not None
                 and self.unknown_attempts > self.policy.max_unknown_attempts
             ):
-                self.emit("max_unknown_attempts_exceeded", attempt, 0.0, klass, exc)
+                self.emit(
+                    "max_unknown_attempts_exceeded",
+                    attempt,
+                    0.0,
+                    klass,
+                    exc,
+                    stop_reason=StopReason.MAX_UNKNOWN_ATTEMPTS,
+                )
                 return _RetryDecision("raise")
 
         if self.elapsed() > self.policy.deadline:
-            self.emit("deadline_exceeded", attempt, 0.0, klass, exc)
+            self.emit(
+                "deadline_exceeded",
+                attempt,
+                0.0,
+                klass,
+                exc,
+                stop_reason=StopReason.DEADLINE_EXCEEDED,
+            )
             return _RetryDecision("raise")
 
         strategy = self.policy._select_strategy(klass)
+        if strategy is None:
+            self.emit(
+                "no_strategy_configured",
+                attempt,
+                0.0,
+                klass,
+                exc,
+                stop_reason=StopReason.NON_RETRYABLE_CLASS,
+            )
+            return _RetryDecision("raise")
         sleep_s = strategy(attempt, klass, self.prev_sleep)
 
         remaining = self.policy.deadline - self.elapsed()
         if remaining.total_seconds() <= 0:
-            self.emit("deadline_exceeded", attempt, 0.0, klass, exc)
+            self.emit(
+                "deadline_exceeded",
+                attempt,
+                0.0,
+                klass,
+                exc,
+                stop_reason=StopReason.DEADLINE_EXCEEDED,
+            )
             return _RetryDecision("raise")
 
         sleep_s = min(sleep_s, remaining.total_seconds())
@@ -338,6 +384,7 @@ class RetryPolicy(_BaseRetryPolicy):
               * "permanent_fail"       – PERMANENT/AUTH/PERMISSION classes, no retry
               * "deadline_exceeded"    – wall-clock deadline exceeded
               * "retry"                – a retry is scheduled
+              * "no_strategy_configured" – missing strategy for a retryable class
               * "max_attempts_exceeded"– we hit max_attempts and re-raise with
                 the original traceback
               * "max_unknown_attempts_exceeded" – UNKNOWN cap hit
@@ -345,6 +392,7 @@ class RetryPolicy(_BaseRetryPolicy):
             Default tags:
               * class – ErrorClass.name when available
               * err   – exception class name when an exception exists
+              * stop_reason – terminal reason (only on terminal events)
               * operation – optional logical operation name from `operation`
 
             Hook errors are swallowed (best-effort) so user workloads are never
@@ -400,7 +448,14 @@ class RetryPolicy(_BaseRetryPolicy):
                 time.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
-                    state.emit("deadline_exceeded", attempt, 0.0, state.last_class, state.last_exc)
+                    state.emit(
+                        "deadline_exceeded",
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        state.last_exc,
+                        stop_reason=StopReason.DEADLINE_EXCEEDED,
+                    )
                     raise
 
                 if attempt == self.max_attempts:
@@ -410,6 +465,7 @@ class RetryPolicy(_BaseRetryPolicy):
                         0.0,
                         state.last_class,
                         state.last_exc,
+                        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
                     )
                     raise
 
@@ -420,6 +476,7 @@ class RetryPolicy(_BaseRetryPolicy):
             0.0,
             state.last_class,
             state.last_exc,
+            stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
         )
         if state.last_exc is not None and state.last_exc.__traceback__ is not None:
             raise state.last_exc.with_traceback(state.last_exc.__traceback__)
@@ -505,7 +562,14 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
                 await asyncio.sleep(decision.sleep_s)
 
                 if state.elapsed() > self.deadline:
-                    state.emit("deadline_exceeded", attempt, 0.0, state.last_class, state.last_exc)
+                    state.emit(
+                        "deadline_exceeded",
+                        attempt,
+                        0.0,
+                        state.last_class,
+                        state.last_exc,
+                        stop_reason=StopReason.DEADLINE_EXCEEDED,
+                    )
                     raise
 
                 if attempt == self.max_attempts:
@@ -515,6 +579,7 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
                         0.0,
                         state.last_class,
                         state.last_exc,
+                        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
                     )
                     raise
 
@@ -524,6 +589,7 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
             0.0,
             state.last_class,
             state.last_exc,
+            stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
         )
 
         if state.last_exc is not None and state.last_exc.__traceback__ is not None:
@@ -607,11 +673,18 @@ def retry(
             ...
 
     Parameters mirror RetryPolicy/AsyncRetryPolicy. Hooks/operation can be set up-front.
+
+    If neither `strategy` nor `strategies` is provided, a default
+    decorrelated_jitter(max_s=5.0) strategy is injected.
     """
 
     def decorator(func: Callable[P, T]) -> Callable[P, T]:
         op_name = operation or getattr(func, "__name__", None)
-        effective_strategy = strategy or decorrelated_jitter(max_s=5.0)
+        effective_strategy: StrategyFn | None
+        if strategy is None and strategies is None:
+            effective_strategy = decorrelated_jitter(max_s=5.0)
+        else:
+            effective_strategy = strategy
 
         if asyncio.iscoroutinefunction(func):
             async_policy = AsyncRetryPolicy(

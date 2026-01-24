@@ -93,3 +93,24 @@ def test_retry_decorator_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert flaky_default() == "ok"
     assert calls["n"] == 2
+
+
+def test_retry_decorator_respects_strategy_mapping_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    calls = {"n": 0}
+
+    @retry(
+        classifier=lambda exc: ErrorClass.TRANSIENT,
+        strategy=None,
+        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        max_attempts=3,
+    )
+    def flaky() -> str:
+        calls["n"] += 1
+        raise RateLimitError("retry me")
+
+    with pytest.raises(RateLimitError):
+        flaky()
+
+    # No fallback strategy should be injected for TRANSIENT.
+    assert calls["n"] == 1

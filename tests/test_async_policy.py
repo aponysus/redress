@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from redress.classify import default_classifier
-from redress.errors import ErrorClass, PermanentError, RateLimitError
+from redress.errors import ErrorClass, PermanentError, RateLimitError, StopReason
 from redress.policy import AsyncRetryPolicy, MetricHook
 
 
@@ -102,6 +102,86 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert tags["class"] == ErrorClass.PERMANENT.name
 
 
+@pytest.mark.parametrize("limit, expected_calls", [(0, 1), (1, 2), (2, 3)])
+def test_async_per_class_max_attempts_limits_retries(
+    monkeypatch: pytest.MonkeyPatch, limit: int, expected_calls: int
+) -> None:
+    class RateLimitError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    async def func() -> None:
+        calls["n"] += 1
+        raise RateLimitError("429")
+
+    metric_hook, events = _collect_metrics()
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.RATE_LIMIT
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        per_class_max_attempts={ErrorClass.RATE_LIMIT: limit},
+        max_attempts=10,
+    )
+
+    with pytest.raises(RateLimitError):
+        asyncio.run(policy.call(func, on_metric=metric_hook))
+
+    assert calls["n"] == expected_calls
+    assert events[-1][0] == "max_attempts_exceeded"
+    assert events[-1][3]["class"] == ErrorClass.RATE_LIMIT.name
+    assert events[-1][3]["stop_reason"] == StopReason.MAX_ATTEMPTS_PER_CLASS.value
+
+
+def test_async_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    class TransientError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    async def func() -> None:
+        calls["n"] += 1
+        raise TransientError("boom")
+
+    metric_hook, events = _collect_metrics()
+
+    sleep_calls: list[float] = []
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", fake_sleep)
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=None,
+        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        deadline_s=30.0,
+        max_attempts=5,
+    )
+
+    with pytest.raises(TransientError):
+        asyncio.run(policy.call(func, on_metric=metric_hook))
+
+    assert calls["n"] == 1
+    assert sleep_calls == []
+    assert events and events[0][0] == "no_strategy_configured"
+    assert events[0][3]["class"] == ErrorClass.TRANSIENT.name
+    assert events[0][3]["err"] == "TransientError"
+    assert events[0][3]["stop_reason"] == StopReason.NON_RETRYABLE_CLASS.value
+
+
 def test_async_cancelled_error_propagates_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     metric_hook, events = _collect_metrics()
     sleep_calls: list[float] = []
@@ -176,4 +256,5 @@ def test_async_deadline_exceeded_reraises_last_exception(monkeypatch: pytest.Mon
 
     assert calls["n"] == 1
     assert sleep_calls and sleep_calls[0] == pytest.approx(0.8)
-    assert "deadline_exceeded" in [event[0] for event in events]
+    deadline_event = next(event for event in events if event[0] == "deadline_exceeded")
+    assert deadline_event[3]["stop_reason"] == StopReason.DEADLINE_EXCEEDED.value

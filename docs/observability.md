@@ -15,14 +15,27 @@ Hook failures are swallowed so they never break the workload; log adapter errors
 - `deadline_exceeded` – wall-clock deadline exceeded
 - `max_attempts_exceeded` – global or per-class cap reached
 - `max_unknown_attempts_exceeded` – UNKNOWN-specific cap reached
+- `no_strategy_configured` – missing strategy for a retryable class
 
 Attempts are 1-based. `sleep_s` is the scheduled delay for retries, otherwise 0.0.
+
+## Stop reasons (terminal only)
+
+Terminal events carry a stable `stop_reason` tag with a small, fixed set:
+
+- `MAX_ATTEMPTS_GLOBAL`
+- `MAX_ATTEMPTS_PER_CLASS`
+- `DEADLINE_EXCEEDED`
+- `MAX_UNKNOWN_ATTEMPTS`
+- `NON_RETRYABLE_CLASS`
+- `ABORTED`
 
 ## Tags
 
 - `operation` – optional logical name provided by caller
 - `class` – `ErrorClass.name` when available
 - `err` – exception class name when available
+- `stop_reason` – terminal reason for stop events only
 
 Avoid payloads or sensitive fields in tags; stick to identifiers.
 
