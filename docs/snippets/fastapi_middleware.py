@@ -6,8 +6,6 @@ Run:
     uv run uvicorn docs.snippets.fastapi_middleware:app --reload
 """
 
-from __future__ import annotations
-
 import httpx
 from fastapi import FastAPI, Request, Response
 

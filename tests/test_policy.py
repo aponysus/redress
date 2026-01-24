@@ -1,6 +1,7 @@
 # tests/test_policy.py
 
 
+import importlib
 import traceback
 from typing import Any
 
@@ -17,6 +18,9 @@ from redress.errors import (
 )
 from redress.policy import MetricHook, Policy, Retry, RetryPolicy
 from redress.strategies import BackoffContext, decorrelated_jitter
+
+_retry_mod = importlib.import_module("redress.policy.retry")
+_state_mod = importlib.import_module("redress.policy.state")
 
 
 class _FakeTime:
@@ -95,7 +99,7 @@ def test_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     metric_hook, events = _collect_metrics()
 
     # Ensure we don't actually sleep during test
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -138,7 +142,7 @@ def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.AUTH
@@ -177,7 +181,7 @@ def test_permission_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.PERMISSION
@@ -226,7 +230,7 @@ def test_context_strategy_receives_classification_from_error_class(
         assert ctx.cause == "exception"
         return 0.0
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: sleep_calls.append(s))
 
     policy = RetryPolicy(
         classifier=classifier,
@@ -265,7 +269,7 @@ def test_context_strategy_receives_retry_after(monkeypatch: pytest.MonkeyPatch) 
         assert ctx.classification.details == {"source": "header"}
         return float(ctx.classification.retry_after_s or 0.0)
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: sleep_calls.append(s))
 
     policy = RetryPolicy(
         classifier=classifier,
@@ -299,7 +303,7 @@ def test_legacy_strategy_wrapped_for_classification(monkeypatch: pytest.MonkeyPa
         assert klass is ErrorClass.TRANSIENT
         return 0.0
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: sleep_calls.append(s))
 
     policy = RetryPolicy(
         classifier=classifier,
@@ -331,7 +335,7 @@ def test_strategy_invalid_sleep_is_clamped(monkeypatch: pytest.MonkeyPatch, valu
     def strategy(ctx: BackoffContext) -> float:
         return value
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: sleep_calls.append(s))
 
     policy = RetryPolicy(
         classifier=classifier,
@@ -360,7 +364,7 @@ def test_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(_: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -389,7 +393,7 @@ def test_keyboard_interrupt_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -410,7 +414,7 @@ def test_system_exit_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -451,7 +455,7 @@ def test_transient_error_retries_and_uses_strategy(monkeypatch: pytest.MonkeyPat
         strategy_calls.append((attempt, klass, prev_sleep))
         return 0.0
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     # Custom classifier that forces TRANSIENT for our FakeTimeoutError
     def classifier(err: BaseException) -> ErrorClass:
@@ -500,7 +504,7 @@ def test_max_attempts_re_raises_last_exception(monkeypatch: pytest.MonkeyPatch) 
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -543,7 +547,7 @@ def test_operation_and_tags_are_emitted(monkeypatch: pytest.MonkeyPatch) -> None
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -586,7 +590,7 @@ def test_log_hook_receives_events(monkeypatch: pytest.MonkeyPatch) -> None:
     log_hook, log_events = _collect_logs()
     metric_hook, _ = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -627,7 +631,7 @@ def test_retry_after_logged_only_on_retry(monkeypatch: pytest.MonkeyPatch) -> No
     log_hook, log_events = _collect_logs()
     metric_hook, metric_events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(_: BaseException) -> Classification:
         return Classification(klass=ErrorClass.RATE_LIMIT, retry_after_s=1.5)
@@ -674,7 +678,7 @@ def test_hooks_are_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
     def noisy_log(event: str, fields: dict[str, Any]) -> None:
         raise RuntimeError("log backend down")
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.TRANSIENT
@@ -710,7 +714,7 @@ def test_per_class_max_attempts_limits_retries(
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.RATE_LIMIT
@@ -816,7 +820,7 @@ def test_per_class_strategy_registry(monkeypatch: pytest.MonkeyPatch) -> None:
         calls["rate_limit"] += 1
         return 0.0
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     # Classifier that always returns RATE_LIMIT
     def classifier(err: BaseException) -> ErrorClass:
@@ -882,7 +886,7 @@ def test_unknown_errors_respect_max_unknown_attempts(monkeypatch: pytest.MonkeyP
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     def classifier(err: BaseException) -> ErrorClass:
         return ErrorClass.UNKNOWN
@@ -928,9 +932,9 @@ def test_deadline_exceeded_stops_retries(monkeypatch: pytest.MonkeyPatch) -> Non
 
     fake_time = _FakeTime()
 
-    # Monkeypatch monotonic clock usage inside redress.policy and sleep
-    monkeypatch.setattr("redress.policy.time.monotonic", fake_time.monotonic)
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: fake_time.advance(s))
+    # Monkeypatch monotonic and sleep in the retry/state modules.
+    monkeypatch.setattr(_state_mod.time, "monotonic", fake_time.monotonic)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: fake_time.advance(s))
 
     call_count = {"n": 0}
 
@@ -974,8 +978,8 @@ def test_deadline_sleep_is_capped_and_rechecked(monkeypatch: pytest.MonkeyPatch)
 
     fake_time = _FakeTime()
 
-    # Patch monotonic clock inside redress.policy and track sleeps.
-    monkeypatch.setattr("redress.policy.time.monotonic", fake_time.monotonic)
+    # Patch monotonic in state and track sleeps in retry.
+    monkeypatch.setattr(_state_mod.time, "monotonic", fake_time.monotonic)
     sleep_calls: list[float] = []
 
     def fake_sleep(seconds: float) -> None:
@@ -983,7 +987,7 @@ def test_deadline_sleep_is_capped_and_rechecked(monkeypatch: pytest.MonkeyPatch)
         # Add a small overhead to ensure we cross the deadline boundary.
         fake_time.advance(seconds + 0.01)
 
-    monkeypatch.setattr("redress.policy.time.sleep", fake_sleep)
+    monkeypatch.setattr(_retry_mod.time, "sleep", fake_sleep)
 
     calls = {"n": 0}
 
@@ -1047,7 +1051,7 @@ def test_default_classifier_integration(monkeypatch: pytest.MonkeyPatch) -> None
     metric_hook, events = _collect_metrics()
 
     # Avoid real sleeping
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     # Wrap a classifier spy around default_classifier
     seen_classes: list[ErrorClass] = []
@@ -1087,7 +1091,7 @@ def test_result_classifier_retries_and_succeeds(monkeypatch: pytest.MonkeyPatch)
         assert ctx.cause == "result"
         return 0.0
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -1110,7 +1114,7 @@ def test_result_classifier_exhausts_with_typed_error(
     def result_classifier(result: str) -> ErrorClass | None:
         return ErrorClass.TRANSIENT
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -1138,7 +1142,7 @@ def test_result_classifier_non_retryable_stops(monkeypatch: pytest.MonkeyPatch) 
     def result_classifier(result: str) -> ErrorClass | None:
         return ErrorClass.PERMANENT
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -1166,7 +1170,7 @@ def test_result_classifier_respects_max_unknown_attempts(
     def result_classifier(result: str) -> ErrorClass | None:
         return ErrorClass.UNKNOWN
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -1193,7 +1197,7 @@ def test_result_classifier_respects_per_class_limits(monkeypatch: pytest.MonkeyP
     def result_classifier(result: str) -> ErrorClass | None:
         return ErrorClass.RATE_LIMIT
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -1233,7 +1237,7 @@ def test_result_classifier_mixed_failures_prefer_result(
     def result_classifier(result: str) -> ErrorClass | None:
         return ErrorClass.PERMANENT
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=classifier,
@@ -1263,7 +1267,7 @@ def test_result_classifier_emits_cause_tag(monkeypatch: pytest.MonkeyPatch) -> N
 
     metric_hook, events = _collect_metrics()
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -1296,7 +1300,7 @@ def test_policy_matches_retry_policy(monkeypatch: pytest.MonkeyPatch) -> None:
 
         return func, calls
 
-    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
 
     metric_hook_a, events_a = _collect_metrics()
     func_a, calls_a = make_flaky()

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import argparse
 import importlib
 from collections.abc import Mapping, Sequence
