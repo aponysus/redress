@@ -18,7 +18,7 @@ def _coerce_status(exc: BaseException) -> int | None:
             return val
     # Common pattern in HTTP libraries: args may include status
     for arg in getattr(exc, "args", ()):
-        if isinstance(arg, int):
+        if isinstance(arg, int) and 100 <= arg <= 599:
             return arg
     return None
 

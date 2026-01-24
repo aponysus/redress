@@ -1,5 +1,6 @@
 # tests/test_extras.py
 
+from redress.classify import default_classifier
 from redress.errors import ErrorClass
 from redress.extras import http_classifier, sqlstate_classifier
 
@@ -38,6 +39,31 @@ def test_http_classifier_from_args() -> None:
     err = HttpError(0)
     err.args = (429,)  # type: ignore[assignment]
     assert http_classifier(err) is ErrorClass.RATE_LIMIT
+
+
+def test_http_classifier_ignores_non_http_int_args() -> None:
+    class MiscError(Exception):
+        pass
+
+    err = MiscError(13)
+    err.args = (13,)  # type: ignore[assignment]
+    assert http_classifier(err) is default_classifier(err)
+
+
+def test_http_classifier_from_status_code_attr() -> None:
+    class HttpError(Exception):
+        def __init__(self) -> None:
+            self.status_code = 429
+
+    assert http_classifier(HttpError()) is ErrorClass.RATE_LIMIT
+
+
+def test_http_classifier_from_code_attr() -> None:
+    class HttpError(Exception):
+        def __init__(self) -> None:
+            self.code = 503
+
+    assert http_classifier(HttpError()) is ErrorClass.SERVER_ERROR
 
 
 def test_sqlstate_classifier_from_string_args() -> None:
