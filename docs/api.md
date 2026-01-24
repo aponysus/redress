@@ -16,6 +16,7 @@
 ## Classifiers
 
 - `default_classifier`
+- `strict_classifier`
 - `http_classifier`, `sqlstate_classifier`, `pyodbc_classifier` (contrib)
 
 ## Strategies

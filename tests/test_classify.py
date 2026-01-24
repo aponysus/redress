@@ -1,7 +1,7 @@
 # tests/test_classify.py
 
 
-from redress.classify import default_classifier
+from redress.classify import default_classifier, strict_classifier
 from redress.errors import (
     ConcurrencyError,
     ErrorClass,
@@ -37,6 +37,27 @@ def test_default_classifier_permission_name_heuristic() -> None:
         pass
 
     assert default_classifier(ForbiddenOperationError()) is ErrorClass.PERMISSION
+
+
+def test_strict_classifier_skips_name_heuristics() -> None:
+    class UnauthorizedAccessError(Exception):
+        pass
+
+    assert strict_classifier(UnauthorizedAccessError()) is ErrorClass.UNKNOWN
+
+
+def test_strict_classifier_ignores_connection_name() -> None:
+    class ConnectionResetError(Exception):
+        pass
+
+    assert strict_classifier(ConnectionResetError()) is ErrorClass.UNKNOWN
+
+
+def test_strict_classifier_uses_status_codes() -> None:
+    class AuthStatusError(Exception):
+        status = 401
+
+    assert strict_classifier(AuthStatusError()) is ErrorClass.AUTH
 
 
 def test_default_classifier_400_is_permanent() -> None:

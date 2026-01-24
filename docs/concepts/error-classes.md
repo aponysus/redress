@@ -20,9 +20,21 @@ Retry-After hints) without expanding the class set.
 
 Classifiers map exceptions → `ErrorClass`:
 
-- `default_classifier` uses name/fields heuristics.
+- `default_classifier` uses a best-effort sequence of marker types, status/code fields, and
+  name-based heuristics.
+- `strict_classifier` uses the same sequence but **skips name-based heuristics** for more
+  predictable behavior.
 - `http_classifier` maps HTTP status codes (429→RATE_LIMIT, 5xx→SERVER_ERROR, 408→TRANSIENT, 401/403 → AUTH/PERMISSION).
 - `sqlstate_classifier` maps SQLSTATE codes (40001/40P01→CONCURRENCY, HYT00/08xxx→TRANSIENT, 28xxx→AUTH).
 - `pyodbc_classifier` (contrib) reuses SQLSTATE mapping for pyodbc-like errors.
 
-Provide your own classifier when you need domain-specific logic; everything else stays the same.
+Default classifier precedence (first match wins):
+
+1. Explicit redress marker types (PermanentError, RateLimitError, etc.).
+2. Numeric `status` or `code` attributes.
+3. Name-based heuristics (e.g., "timeout", "connection", "auth", "permission").
+4. Fallback to `UNKNOWN`.
+
+Name-based heuristics are convenient for quick starts but can surprise you if your exception
+names are custom. For production systems, prefer explicit domain classifiers (HTTP/DB/etc.) or
+`strict_classifier` with your own overrides.
