@@ -1783,3 +1783,181 @@ def test_policy_breaker_ignores_circuit_open_error() -> None:
         policy.call(fail)
 
     assert breaker.state is CircuitState.CLOSED
+
+
+def test_policy_execute_no_retry_failure_emits_breaker_event() -> None:
+    class WeirdError(Exception):
+        pass
+
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+
+    policy = Policy(circuit_breaker=breaker)
+    metric_hook, events = _collect_metrics()
+
+    def fail() -> None:
+        raise WeirdError("boom")
+
+    outcome = policy.execute(fail, on_metric=metric_hook, operation="op")
+
+    assert outcome.ok is False
+    assert outcome.attempts == 1
+    assert isinstance(outcome.last_exception, WeirdError)
+    assert outcome.last_class is ErrorClass.UNKNOWN
+    assert outcome.cause == "exception"
+    assert breaker.state is CircuitState.OPEN
+
+    opened_tags = next(tags for event, _, _, tags in events if event == "circuit_opened")
+    assert opened_tags["state"] == CircuitState.OPEN.value
+    assert opened_tags["operation"] == "op"
+
+
+def test_policy_execute_breaker_rejected_returns_outcome() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+    breaker.record_failure(ErrorClass.UNKNOWN)
+
+    policy = Policy(circuit_breaker=breaker)
+    metric_hook, events = _collect_metrics()
+
+    outcome = policy.execute(lambda: "ok", on_metric=metric_hook, operation="op")
+
+    assert outcome.ok is False
+    assert outcome.attempts == 0
+    assert isinstance(outcome.last_exception, CircuitOpenError)
+    assert breaker.state is CircuitState.OPEN
+
+    rejected_tags = next(tags for event, _, _, tags in events if event == "circuit_rejected")
+    assert rejected_tags["state"] == CircuitState.OPEN.value
+    assert rejected_tags["operation"] == "op"
+
+
+def test_policy_execute_with_retry_aborted_records_cancel() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+        trip_on={ErrorClass.TRANSIENT},
+    )
+
+    called = {"n": 0}
+    original = breaker.record_cancel
+
+    def record_cancel() -> None:
+        called["n"] += 1
+        original()
+
+    breaker.record_cancel = record_cancel  # type: ignore[assignment]
+
+    policy = Policy(
+        retry=Retry(
+            classifier=default_classifier,
+            strategy=_no_sleep_strategy,
+            max_attempts=3,
+        ),
+        circuit_breaker=breaker,
+    )
+
+    outcome = policy.execute(lambda: "ok", abort_if=lambda: True)
+
+    assert outcome.stop_reason is StopReason.ABORTED
+    assert outcome.attempts == 0
+    assert called["n"] == 1
+
+
+def test_policy_execute_breaker_half_open_success_emits_events() -> None:
+    fake_time = _FakeTime()
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=1.0,
+        trip_on={ErrorClass.UNKNOWN},
+        clock=fake_time.monotonic,
+    )
+    breaker.record_failure(ErrorClass.UNKNOWN)
+    fake_time.advance(1.1)
+
+    policy = Policy(circuit_breaker=breaker)
+    metric_hook, events = _collect_metrics()
+    log_events: list[tuple[str, dict[str, Any]]] = []
+
+    def log_hook(event: str, fields: dict[str, Any]) -> None:
+        log_events.append((event, fields))
+
+    outcome = policy.execute(lambda: "ok", on_metric=metric_hook, on_log=log_hook)
+
+    assert outcome.ok is True
+    event_names = [event for event, _, _, _ in events]
+    assert "circuit_half_open" in event_names
+    assert "circuit_closed" in event_names
+    assert any(event == "circuit_half_open" for event, _ in log_events)
+
+
+def test_policy_execute_no_retry_abort_if_returns_outcome() -> None:
+    policy = Policy()
+
+    outcome = policy.execute(lambda: "ok", abort_if=lambda: True)
+
+    assert outcome.stop_reason is StopReason.ABORTED
+    assert outcome.attempts == 0
+
+
+def test_policy_execute_breaker_event_hooks_swallow_errors() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.UNKNOWN},
+    )
+    breaker.record_failure(ErrorClass.UNKNOWN)
+
+    policy = Policy(circuit_breaker=breaker)
+
+    def metric_hook(_: str, __: int, ___: float, ____: dict[str, Any]) -> None:
+        raise RuntimeError("metric fail")
+
+    def log_hook(_: str, __: dict[str, Any]) -> None:
+        raise RuntimeError("log fail")
+
+    outcome = policy.execute(lambda: "ok", on_metric=metric_hook, on_log=log_hook)
+
+    assert outcome.ok is False
+    assert isinstance(outcome.last_exception, CircuitOpenError)
+
+
+def test_policy_call_no_retry_abort_if_raises() -> None:
+    policy = Policy()
+
+    with pytest.raises(AbortRetryError):
+        policy.call(lambda: "ok", abort_if=lambda: True)
+
+
+def test_policy_call_no_retry_abort_if_records_cancel() -> None:
+    breaker = CircuitBreaker(
+        failure_threshold=1,
+        window_s=10.0,
+        recovery_timeout_s=5.0,
+    )
+    called = {"n": 0}
+    original = breaker.record_cancel
+
+    def record_cancel() -> None:
+        called["n"] += 1
+        original()
+
+    breaker.record_cancel = record_cancel  # type: ignore[assignment]
+
+    policy = Policy(circuit_breaker=breaker)
+
+    with pytest.raises(AbortRetryError):
+        policy.call(lambda: "ok", abort_if=lambda: True)
+
+    assert called["n"] == 1

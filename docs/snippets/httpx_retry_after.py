@@ -6,8 +6,8 @@ Run with:
     uv run python docs/snippets/httpx_retry_after.py
 """
 
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import httpx
