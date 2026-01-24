@@ -1,10 +1,29 @@
 import random
 from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Literal
 
+from .classify import Classification
 from .errors import ErrorClass
 
-# Strategy signature used throughout the library
-StrategyFn = Callable[[int, ErrorClass, float | None], float]
+
+@dataclass(frozen=True)
+class BackoffContext:
+    attempt: int
+    classification: Classification
+    prev_sleep_s: float | None
+    remaining_s: float | None
+    cause: Literal["exception", "result"]
+
+    @property
+    def klass(self) -> ErrorClass:
+        return self.classification.klass
+
+
+LegacyStrategyFn = Callable[[int, ErrorClass, float | None], float]
+ContextStrategyFn = Callable[[BackoffContext], float]
+StrategyFn = LegacyStrategyFn | ContextStrategyFn
+BackoffFn = ContextStrategyFn
 
 
 def decorrelated_jitter(base_s: float = 0.25, max_s: float = 30.0) -> StrategyFn:

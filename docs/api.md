@@ -18,12 +18,15 @@
 - `default_classifier`
 - `strict_classifier`
 - `http_classifier`, `sqlstate_classifier`, `pyodbc_classifier` (contrib)
+- `Classification` dataclass for structured classifier outputs
+- `http_retry_after_classifier` for Retry-After extraction
 
 ## Strategies
 
 - `decorrelated_jitter`
 - `equal_jitter`
 - `token_backoff`
+- `BackoffContext` for context-aware strategy functions
 
 ## Errors
 

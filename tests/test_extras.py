@@ -1,8 +1,11 @@
 # tests/test_extras.py
 
-from redress.classify import default_classifier
+from datetime import UTC, datetime, timedelta
+from email.utils import format_datetime
+
+from redress.classify import Classification, default_classifier
 from redress.errors import ErrorClass
-from redress.extras import http_classifier, sqlstate_classifier
+from redress.extras import http_classifier, http_retry_after_classifier, sqlstate_classifier
 
 
 def test_http_classifier_mappings() -> None:
@@ -81,6 +84,33 @@ def test_http_classifier_unknown_falls_back() -> None:
             self.status_code = 777
 
     assert http_classifier(HttpError()) is ErrorClass.UNKNOWN
+
+
+def test_http_retry_after_classifier_seconds() -> None:
+    class HttpError(Exception):
+        def __init__(self, status: int, headers: dict[str, str]) -> None:
+            self.status = status
+            self.headers = headers
+
+    result = http_retry_after_classifier(HttpError(429, {"Retry-After": "120"}))
+    assert isinstance(result, Classification)
+    assert result.klass is ErrorClass.RATE_LIMIT
+    assert result.retry_after_s == 120.0
+
+
+def test_http_retry_after_classifier_http_date() -> None:
+    class HttpError(Exception):
+        def __init__(self, status: int, headers: dict[str, str]) -> None:
+            self.status = status
+            self.headers = headers
+
+    retry_at = datetime.now(UTC) + timedelta(seconds=5)
+    header = format_datetime(retry_at)
+    result = http_retry_after_classifier(HttpError(429, {"Retry-After": header}))
+    assert isinstance(result, Classification)
+    assert result.klass is ErrorClass.RATE_LIMIT
+    assert result.retry_after_s is not None
+    assert 0.0 <= result.retry_after_s <= 6.0
 
 
 def test_sqlstate_classifier_unknown_falls_back() -> None:

@@ -6,9 +6,10 @@ from typing import Any
 
 import pytest
 
-from redress.classify import default_classifier
+from redress.classify import Classification, default_classifier
 from redress.errors import ErrorClass, PermanentError, RateLimitError, StopReason
 from redress.policy import AsyncRetryPolicy, MetricHook
+from redress.strategies import BackoffContext
 
 
 def _collect_metrics() -> tuple[MetricHook, list[tuple[str, int, float, dict[str, Any]]]]:
@@ -100,6 +101,43 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
     assert attempt == 1
     assert sleep_s == 0.0
     assert tags["class"] == ErrorClass.PERMANENT.name
+
+
+def test_async_context_strategy_receives_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
+    class RateLimitError(Exception):
+        pass
+
+    calls = {"n": 0}
+    sleep_calls: list[float] = []
+
+    async def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RateLimitError("429")
+        return "ok"
+
+    async def fake_sleep(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", fake_sleep)
+
+    def classifier(_: BaseException) -> Classification:
+        return Classification(klass=ErrorClass.RATE_LIMIT, retry_after_s=0.25)
+
+    def strategy(ctx: BackoffContext) -> float:
+        assert ctx.classification.retry_after_s == 0.25
+        return float(ctx.classification.retry_after_s or 0.0)
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    assert asyncio.run(policy.call(func)) == "ok"
+    assert calls["n"] == 2
+    assert sleep_calls == [0.25]
 
 
 @pytest.mark.parametrize("limit, expected_calls", [(0, 1), (1, 2), (2, 3)])

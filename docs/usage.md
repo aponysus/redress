@@ -28,6 +28,30 @@ Per-class limit semantics:
 - `1` = one retry (two total attempts for that class)
 - `2` = two retries (three total attempts for that class)
 
+## Classification context & context-aware strategies
+
+Classifiers may return `Classification` to pass hints like Retry-After. The retry
+loop normalizes all classifier outputs to `Classification`, and context-aware
+strategies receive a `BackoffContext`.
+
+```python
+from redress import RetryPolicy
+from redress.extras import http_retry_after_classifier
+from redress.strategies import BackoffContext
+
+def strategy(ctx: BackoffContext) -> float:
+    return float(ctx.classification.retry_after_s or 0.0)
+
+policy = RetryPolicy(
+    classifier=http_retry_after_classifier,
+    strategy=strategy,
+)
+```
+
+Legacy strategies with `(attempt, klass, prev_sleep_s)` are still supported.
+Strategies must accept exactly one required positional argument (ctx) or three
+required positional arguments (attempt, klass, prev_sleep_s).
+
 ## Using `operation` to distinguish call sites
 
 ```python

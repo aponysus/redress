@@ -1,6 +1,19 @@
 # Retry strategies
 
-Built-ins (all return a `StrategyFn`):
+Strategies can use one of two signatures:
+
+- Context-aware: `strategy(ctx: BackoffContext) -> float`
+- Legacy: `strategy(attempt: int, klass: ErrorClass, prev_sleep_s: float | None) -> float`
+
+`BackoffContext` provides:
+
+- `attempt` – 1-based attempt number
+- `classification` – structured `Classification` (retry hints, details)
+- `remaining_s` – deadline time remaining (seconds)
+- `prev_sleep_s` – previous sleep value
+- `cause` – `"exception"` for now (future result-based retries add `"result"`)
+
+Built-ins (all return a `StrategyFn` and use the legacy signature):
 
 - `decorrelated_jitter(base_s=0.25, max_s=30.0)` – sleeps uniformly in `[base_s, prev_sleep*3]`, clamped to `max_s`.
 - `equal_jitter(base_s=0.25, max_s=30.0)` – exponential with jitter in `[cap/2, cap]`, `cap = min(max_s, base_s*2^attempt)`.
