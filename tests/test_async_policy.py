@@ -217,7 +217,7 @@ def test_async_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -
     assert events and events[0][0] == "no_strategy_configured"
     assert events[0][3]["class"] == ErrorClass.TRANSIENT.name
     assert events[0][3]["err"] == "TransientError"
-    assert events[0][3]["stop_reason"] == StopReason.NON_RETRYABLE_CLASS.value
+    assert events[0][3]["stop_reason"] == StopReason.NO_STRATEGY.value
 
 
 def test_async_cancelled_error_propagates_without_retry(monkeypatch: pytest.MonkeyPatch) -> None:

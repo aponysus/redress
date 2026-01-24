@@ -5,7 +5,12 @@ from email.utils import format_datetime
 
 from redress.classify import Classification, default_classifier
 from redress.errors import ErrorClass
-from redress.extras import http_classifier, http_retry_after_classifier, sqlstate_classifier
+from redress.extras import (
+    _parse_retry_after,
+    http_classifier,
+    http_retry_after_classifier,
+    sqlstate_classifier,
+)
 
 
 def test_http_classifier_mappings() -> None:
@@ -111,6 +116,76 @@ def test_http_retry_after_classifier_http_date() -> None:
     assert result.klass is ErrorClass.RATE_LIMIT
     assert result.retry_after_s is not None
     assert 0.0 <= result.retry_after_s <= 6.0
+
+
+def test_http_retry_after_classifier_direct_retry_after() -> None:
+    class HttpError(Exception):
+        def __init__(self, status: int, retry_after: object) -> None:
+            self.status = status
+            self.retry_after = retry_after
+
+    result = http_retry_after_classifier(HttpError(429, 7))
+    assert isinstance(result, Classification)
+    assert result.retry_after_s == 7.0
+
+    result = http_retry_after_classifier(HttpError(429, "5"))
+    assert isinstance(result, Classification)
+    assert result.retry_after_s == 5.0
+
+
+def test_http_retry_after_classifier_ignores_invalid_retry_after() -> None:
+    class HttpError(Exception):
+        def __init__(self, status: int, headers: dict[str, str]) -> None:
+            self.status = status
+            self.headers = headers
+
+    result = http_retry_after_classifier(HttpError(429, {"Retry-After": "junk"}))
+    assert result is ErrorClass.RATE_LIMIT
+
+
+def test_http_retry_after_classifier_non_rate_limit() -> None:
+    class HttpError(Exception):
+        def __init__(self, status: int, headers: dict[str, str]) -> None:
+            self.status = status
+            self.headers = headers
+
+    result = http_retry_after_classifier(HttpError(503, {"Retry-After": "5"}))
+    assert result is ErrorClass.SERVER_ERROR
+
+
+def test_http_retry_after_classifier_header_shapes() -> None:
+    class HeadersObj:
+        def __init__(self, data: list[tuple[str, str]]) -> None:
+            self._data = data
+
+        def get(self, key: str) -> None:
+            return None
+
+        def items(self) -> list[tuple[str, str]]:
+            return self._data
+
+    class HttpError(Exception):
+        def __init__(self, status: int, headers: object) -> None:
+            self.status = status
+            self.headers = headers
+
+    result = http_retry_after_classifier(HttpError(429, {"retry-after": "3"}))
+    assert isinstance(result, Classification)
+    assert result.retry_after_s == 3.0
+
+    result = http_retry_after_classifier(HttpError(429, HeadersObj([("Retry-After", "4")])))
+    assert isinstance(result, Classification)
+    assert result.retry_after_s == 4.0
+
+    result = http_retry_after_classifier(HttpError(429, [("Retry-After", "6")]))
+    assert isinstance(result, Classification)
+    assert result.retry_after_s == 6.0
+
+
+def test_parse_retry_after_naive_date() -> None:
+    parsed = _parse_retry_after("Wed, 21 Oct 2015 07:28:00")
+    assert parsed is not None
+    assert parsed >= 0.0
 
 
 def test_sqlstate_classifier_unknown_falls_back() -> None:

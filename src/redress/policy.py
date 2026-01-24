@@ -265,7 +265,7 @@ class _RetryState:
                 0.0,
                 klass,
                 exc,
-                stop_reason=StopReason.NON_RETRYABLE_CLASS,
+                stop_reason=StopReason.NO_STRATEGY,
             )
             return _RetryDecision("raise")
 

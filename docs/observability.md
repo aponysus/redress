@@ -28,6 +28,7 @@ Terminal events carry a stable `stop_reason` tag with a small, fixed set:
 - `DEADLINE_EXCEEDED`
 - `MAX_UNKNOWN_ATTEMPTS`
 - `NON_RETRYABLE_CLASS`
+- `NO_STRATEGY`
 - `ABORTED`
 
 ## Tags
