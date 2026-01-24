@@ -388,6 +388,10 @@ class RetryPolicy(_BaseRetryPolicy):
                 state.emit("success", attempt, 0.0)
                 return result
 
+            except asyncio.CancelledError:
+                raise
+            except (KeyboardInterrupt, SystemExit):
+                raise
             except Exception as exc:
                 decision = state.handle_exception(exc, attempt)
                 if decision.action == "raise":
@@ -489,6 +493,10 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
                 result = await func()
                 state.emit("success", attempt, 0.0)
                 return result
+            except asyncio.CancelledError:
+                raise
+            except (KeyboardInterrupt, SystemExit):
+                raise
             except Exception as exc:
                 decision = state.handle_exception(exc, attempt)
                 if decision.action == "raise":

@@ -198,6 +198,48 @@ def test_permission_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     assert tags["err"] == "ForbiddenError"
 
 
+def test_keyboard_interrupt_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    def func() -> None:
+        raise KeyboardInterrupt("stop")
+
+    metric_hook, events = _collect_metrics()
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=30.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        policy.call(func, on_metric=metric_hook)
+
+    assert events == []
+
+
+def test_system_exit_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
+    def func() -> None:
+        raise SystemExit(2)
+
+    metric_hook, events = _collect_metrics()
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=30.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(SystemExit):
+        policy.call(func, on_metric=metric_hook)
+
+    assert events == []
+
+
 def test_transient_error_retries_and_uses_strategy(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     TRANSIENT errors should be retried using the configured strategy.
