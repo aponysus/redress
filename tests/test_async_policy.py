@@ -2,7 +2,6 @@
 
 
 import asyncio
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -26,14 +25,14 @@ def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:
 
 
 class _FakeTime:
-    def __init__(self, start: datetime | None = None) -> None:
-        self._now = start or datetime.now(UTC)
+    def __init__(self, start: float | None = None) -> None:
+        self._now = start or 0.0
 
-    def now(self) -> datetime:
+    def monotonic(self) -> float:
         return self._now
 
     def advance(self, seconds: float) -> None:
-        self._now += timedelta(seconds=seconds)
+        self._now += seconds
 
 
 def test_async_policy_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -109,12 +108,7 @@ def test_async_deadline_exceeded_reraises_last_exception(monkeypatch: pytest.Mon
 
     fake_time = _FakeTime()
 
-    def fake_now(_: Any = None) -> datetime:
-        return fake_time.now()
-
-    monkeypatch.setattr(
-        "redress.policy.datetime", type("DT", (), {"now": staticmethod(fake_now), "UTC": UTC})
-    )
+    monkeypatch.setattr("redress.policy.time.monotonic", fake_time.monotonic)
 
     sleep_calls: list[float] = []
 

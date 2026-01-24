@@ -2,7 +2,6 @@
 
 
 import traceback
-from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -20,19 +19,17 @@ from redress.strategies import decorrelated_jitter
 
 class _FakeTime:
     """
-    Simple fake clock to control time in deadline tests.
-
-    We mimic datetime.now(UTC) by exposing now() and advance() helpers.
+    Simple fake monotonic clock to control time in deadline tests.
     """
 
-    def __init__(self, start: datetime | None = None) -> None:
-        self._now = start or datetime.now(UTC)
+    def __init__(self, start: float | None = None) -> None:
+        self._now = start or 0.0
 
-    def now(self) -> datetime:
+    def monotonic(self) -> float:
         return self._now
 
     def advance(self, seconds: float) -> None:
-        self._now += timedelta(seconds=seconds)
+        self._now += seconds
 
 
 # ---------------------------------------------------------------------------
@@ -621,13 +618,8 @@ def test_deadline_exceeded_stops_retries(monkeypatch: pytest.MonkeyPatch) -> Non
 
     fake_time = _FakeTime()
 
-    # Monkeypatch both datetime.now(UTC) usage inside redress.policy and sleep
-    def fake_now(_: Any = None) -> datetime:
-        return fake_time.now()
-
-    monkeypatch.setattr(
-        "redress.policy.datetime", type("DT", (), {"now": staticmethod(fake_now), "UTC": UTC})
-    )
+    # Monkeypatch monotonic clock usage inside redress.policy and sleep
+    monkeypatch.setattr("redress.policy.time.monotonic", fake_time.monotonic)
     monkeypatch.setattr("redress.policy.time.sleep", lambda s: fake_time.advance(s))
 
     call_count = {"n": 0}
@@ -671,13 +663,8 @@ def test_deadline_sleep_is_capped_and_rechecked(monkeypatch: pytest.MonkeyPatch)
 
     fake_time = _FakeTime()
 
-    def fake_now(_: Any = None) -> datetime:
-        return fake_time.now()
-
-    # Patch datetime.now(UTC) inside redress.policy and track sleeps.
-    monkeypatch.setattr(
-        "redress.policy.datetime", type("DT", (), {"now": staticmethod(fake_now), "UTC": UTC})
-    )
+    # Patch monotonic clock inside redress.policy and track sleeps.
+    monkeypatch.setattr("redress.policy.time.monotonic", fake_time.monotonic)
     sleep_calls: list[float] = []
 
     def fake_sleep(seconds: float) -> None:

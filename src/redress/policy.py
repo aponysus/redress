@@ -4,7 +4,7 @@ import functools
 import time
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 from typing import Any, Literal, ParamSpec, TypeVar, cast, overload
 
 from .classify import default_classifier
@@ -75,7 +75,7 @@ class _RetryState:
         self.on_metric = on_metric
         self.on_log = on_log
         self.operation = operation
-        self.start = datetime.now(UTC)
+        self.start_mono = time.monotonic()
         self.prev_sleep: float | None = None
         self.last_exc: BaseException | None = None
         self.last_class: ErrorClass | None = None
@@ -83,7 +83,7 @@ class _RetryState:
         self.per_class_counts: dict[ErrorClass, int] = collections.defaultdict(int)
 
     def elapsed(self) -> timedelta:
-        return datetime.now(UTC) - self.start
+        return timedelta(seconds=time.monotonic() - self.start_mono)
 
     def emit(
         self,
