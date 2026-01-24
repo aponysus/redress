@@ -50,3 +50,4 @@
 
 - `prometheus_metric_hook(counter)`
 - `otel_metric_hook(meter, name="redress_attempts")`
+- `redress.contrib.otel.otel_hooks(tracer=None, meter=None)` (spans + metrics)

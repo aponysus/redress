@@ -62,19 +62,34 @@ policy.call(
 
 Counter should expose `.labels(event=..., **tags).inc()`.
 
-## OTEL pattern (pseudo-code)
+## OpenTelemetry hooks
 
 ```python
-from redress.metrics import otel_metric_hook
+from opentelemetry import metrics, trace
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.trace import TracerProvider
+from redress.contrib.otel import otel_hooks
+
+trace.set_tracer_provider(TracerProvider())
+metrics.set_meter_provider(MeterProvider())
+
+hooks = otel_hooks(
+    tracer=trace.get_tracer("redress"),
+    meter=metrics.get_meter("redress"),
+)
 
 policy.call(
     lambda: do_work(),
-    on_metric=otel_metric_hook(meter, name="redress_attempts"),
+    **hooks,
     operation="sync_user",
 )
 ```
 
-Meter counter should support `.add(1, attributes=attributes)`.
+`otel_hooks` emits spans with attempt events plus metrics:
+`redress.retries`, `redress.retry.duration`, `redress.retry.success_after_retries`,
+and `redress.circuit.state`. Attributes include `error.class`, `retry.attempt`,
+and `operation`. It requires `opentelemetry-api` (and the SDK if you set
+providers directly).
 
 ## Testing hooks
 
@@ -115,7 +130,7 @@ def do_work():
     ...
 ```
 
-## OTEL counter example (pseudo-code)
+## OpenTelemetry metric-only hook
 
 ```python
 from redress.metrics import otel_metric_hook
