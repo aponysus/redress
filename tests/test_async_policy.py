@@ -7,7 +7,13 @@ from typing import Any
 import pytest
 
 from redress.classify import Classification, default_classifier
-from redress.errors import ErrorClass, PermanentError, RateLimitError, StopReason
+from redress.errors import (
+    ErrorClass,
+    PermanentError,
+    RateLimitError,
+    RetryExhaustedError,
+    StopReason,
+)
 from redress.policy import AsyncRetryPolicy, MetricHook
 from redress.strategies import BackoffContext
 
@@ -296,3 +302,211 @@ def test_async_deadline_exceeded_reraises_last_exception(monkeypatch: pytest.Mon
     assert sleep_calls and sleep_calls[0] == pytest.approx(0.8)
     deadline_event = next(event for event in events if event[0] == "deadline_exceeded")
     assert deadline_event[3]["stop_reason"] == StopReason.DEADLINE_EXCEEDED.value
+
+
+# ---------------------------------------------------------------------------
+# Result-based retries
+# ---------------------------------------------------------------------------
+
+
+def test_async_result_classifier_retries_and_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    async def func() -> str:
+        calls["n"] += 1
+        return "retry" if calls["n"] == 1 else "ok"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.TRANSIENT if result == "retry" else None
+
+    def strategy(ctx: BackoffContext) -> float:
+        assert ctx.cause == "result"
+        return 0.0
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+    )
+
+    assert asyncio.run(policy.call(func)) == "ok"
+    assert calls["n"] == 2
+
+
+def test_async_result_classifier_exhausts_with_typed_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.TRANSIENT
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=2,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        asyncio.run(policy.call(func))
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert err.attempts == 2
+    assert err.last_class is ErrorClass.TRANSIENT
+    assert err.last_exception is None
+    assert err.last_result == "bad"
+
+
+def test_async_result_classifier_non_retryable_stops(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.PERMANENT
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        asyncio.run(policy.call(func))
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.NON_RETRYABLE_CLASS
+    assert err.attempts == 1
+    assert err.last_class is ErrorClass.PERMANENT
+
+
+def test_async_result_classifier_respects_max_unknown_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.UNKNOWN
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+        max_unknown_attempts=0,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        asyncio.run(policy.call(func))
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.MAX_UNKNOWN_ATTEMPTS
+    assert err.attempts == 1
+    assert err.last_class is ErrorClass.UNKNOWN
+
+
+def test_async_result_classifier_respects_per_class_limits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.RATE_LIMIT
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+        per_class_max_attempts={ErrorClass.RATE_LIMIT: 0},
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        asyncio.run(policy.call(func))
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.MAX_ATTEMPTS_PER_CLASS
+    assert err.attempts == 1
+    assert err.last_class is ErrorClass.RATE_LIMIT
+
+
+def test_async_result_classifier_mixed_failures_prefer_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FlakyError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    async def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise FlakyError("boom")
+        return "bad"
+
+    def classifier(exc: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.PERMANENT
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        asyncio.run(policy.call(func))
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.NON_RETRYABLE_CLASS
+    assert err.attempts == 2
+    assert err.last_class is ErrorClass.PERMANENT
+    assert err.last_exception is None
+    assert err.last_result == "bad"

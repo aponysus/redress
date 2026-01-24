@@ -6,6 +6,7 @@ from .errors import (
     ErrorClass,
     PermanentError,
     RateLimitError,
+    RetryExhaustedError,
     ServerError,
     StopReason,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "StopReason",
     "PermanentError",
     "RateLimitError",
+    "RetryExhaustedError",
     "ConcurrencyError",
     "ServerError",
     "decorrelated_jitter",

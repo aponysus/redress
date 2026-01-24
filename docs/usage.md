@@ -49,6 +49,40 @@ Legacy strategies with `(attempt, klass, prev_sleep_s)` are still supported.
 Strategies must accept exactly one required positional argument (ctx) or three
 required positional arguments (attempt, klass, prev_sleep_s).
 
+## Result-based retries
+
+Use `result_classifier` to retry on return values instead of exceptions.
+
+```python
+from redress import RetryPolicy
+from redress.classify import Classification, default_classifier
+from redress.errors import ErrorClass, RetryExhaustedError
+from redress.strategies import decorrelated_jitter, retry_after_or
+
+def result_classifier(resp) -> ErrorClass | Classification | None:
+    status = getattr(resp, "status", None) or getattr(resp, "status_code", None)
+    if status == 429:
+        retry_after = None
+        header = getattr(resp, "headers", {}).get("Retry-After")
+        if isinstance(header, str) and header.isdigit():
+            retry_after = float(header)
+        return Classification(klass=ErrorClass.RATE_LIMIT, retry_after_s=retry_after)
+    if status is not None and status >= 500:
+        return ErrorClass.SERVER_ERROR
+    return None
+
+policy = RetryPolicy(
+    classifier=default_classifier,
+    result_classifier=result_classifier,
+    strategy=retry_after_or(decorrelated_jitter(max_s=10.0)),
+)
+
+try:
+    policy.call(fetch_response)
+except RetryExhaustedError as err:
+    ...
+```
+
 ## Using `operation` to distinguish call sites
 
 ```python

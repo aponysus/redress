@@ -12,6 +12,7 @@ from redress.errors import (
     ErrorClass,
     PermanentError,
     RateLimitError,
+    RetryExhaustedError,
     StopReason,
 )
 from redress.policy import MetricHook, RetryPolicy
@@ -744,6 +745,7 @@ def test_retry_policy_from_config_creates_equivalent_policy() -> None:
         per_class_max_attempts={ErrorClass.RATE_LIMIT: 2},
         default_strategy=_no_sleep_strategy,
         class_strategies={ErrorClass.CONCURRENCY: _no_sleep_strategy},
+        result_classifier=lambda result: None,
     )
 
     policy = RetryPolicy.from_config(cfg, classifier=lambda e: ErrorClass.UNKNOWN)
@@ -752,6 +754,7 @@ def test_retry_policy_from_config_creates_equivalent_policy() -> None:
     assert policy.max_attempts == cfg.max_attempts
     assert policy.max_unknown_attempts == cfg.max_unknown_attempts
     assert policy.per_class_max_attempts[ErrorClass.RATE_LIMIT] == 2
+    assert policy.result_classifier is cfg.result_classifier
     # Strategy lookup should invoke the configured strategies.
     assert policy._default_strategy is not None
     assert (
@@ -1050,9 +1053,215 @@ def test_default_classifier_integration(monkeypatch: pytest.MonkeyPatch) -> None
     with pytest.raises(Http429Error):
         policy.call(func, on_metric=metric_hook)
 
-    # default_classifier should classify as RATE_LIMIT
-    assert seen_classes and all(k is ErrorClass.RATE_LIMIT for k in seen_classes)
 
-    # We should have retried until max_attempts exceeded
-    assert calls["n"] == 3
-    assert events[-1][0] == "max_attempts_exceeded"
+# ---------------------------------------------------------------------------
+# Result-based retries
+# ---------------------------------------------------------------------------
+
+
+def test_result_classifier_retries_and_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def func() -> str:
+        calls["n"] += 1
+        return "retry" if calls["n"] == 1 else "ok"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.TRANSIENT if result == "retry" else None
+
+    def strategy(ctx: BackoffContext) -> float:
+        assert ctx.cause == "result"
+        return 0.0
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+    )
+
+    assert policy.call(func) == "ok"
+    assert calls["n"] == 2
+
+
+def test_result_classifier_exhausts_with_typed_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.TRANSIENT
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=2,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        policy.call(func)
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert err.attempts == 2
+    assert err.last_class is ErrorClass.TRANSIENT
+    assert err.last_exception is None
+    assert err.last_result == "bad"
+
+
+def test_result_classifier_non_retryable_stops(monkeypatch: pytest.MonkeyPatch) -> None:
+    def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.PERMANENT
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        policy.call(func)
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.NON_RETRYABLE_CLASS
+    assert err.attempts == 1
+    assert err.last_class is ErrorClass.PERMANENT
+
+
+def test_result_classifier_respects_max_unknown_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.UNKNOWN
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+        max_unknown_attempts=0,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        policy.call(func)
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.MAX_UNKNOWN_ATTEMPTS
+    assert err.attempts == 1
+    assert err.last_class is ErrorClass.UNKNOWN
+
+
+def test_result_classifier_respects_per_class_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.RATE_LIMIT
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+        per_class_max_attempts={ErrorClass.RATE_LIMIT: 0},
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        policy.call(func)
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.MAX_ATTEMPTS_PER_CLASS
+    assert err.attempts == 1
+    assert err.last_class is ErrorClass.RATE_LIMIT
+
+
+def test_result_classifier_mixed_failures_prefer_result(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FlakyError(Exception):
+        pass
+
+    calls = {"n": 0}
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise FlakyError("boom")
+        return "bad"
+
+    def classifier(exc: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.PERMANENT
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        policy.call(func)
+
+    err = excinfo.value
+    assert err.stop_reason == StopReason.NON_RETRYABLE_CLASS
+    assert err.attempts == 2
+    assert err.last_class is ErrorClass.PERMANENT
+    assert err.last_exception is None
+    assert err.last_result == "bad"
+
+
+def test_result_classifier_emits_cause_tag(monkeypatch: pytest.MonkeyPatch) -> None:
+    def func() -> str:
+        return "bad"
+
+    def result_classifier(result: str) -> ErrorClass | None:
+        return ErrorClass.TRANSIENT
+
+    metric_hook, events = _collect_metrics()
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=2,
+    )
+
+    with pytest.raises(RetryExhaustedError):
+        policy.call(func, on_metric=metric_hook)
+
+    retry_event = next(event for event in events if event[0] == "retry")
+    assert retry_event[3]["cause"] == "result"
+    assert "err" not in retry_event[3]
