@@ -14,7 +14,7 @@ from redress.errors import (
     RetryExhaustedError,
     StopReason,
 )
-from redress.policy import AsyncRetryPolicy, MetricHook
+from redress.policy import AsyncPolicy, AsyncRetry, AsyncRetryPolicy, MetricHook
 from redress.strategies import BackoffContext
 
 
@@ -510,3 +510,52 @@ def test_async_result_classifier_mixed_failures_prefer_result(
     assert err.last_class is ErrorClass.PERMANENT
     assert err.last_exception is None
     assert err.last_result == "bad"
+
+
+def test_async_policy_matches_async_retry_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def classifier(exc: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr("redress.policy.asyncio.sleep", noop_sleep)
+
+    def make_flaky() -> tuple[object, dict[str, int]]:
+        calls = {"n": 0}
+
+        async def func() -> str:
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise ValueError("boom")
+            return "ok"
+
+        return func, calls
+
+    metric_hook_a, events_a = _collect_metrics()
+    func_a, calls_a = make_flaky()
+    policy_a = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+    )
+    result_a = asyncio.run(policy_a.call(func_a, on_metric=metric_hook_a))
+
+    metric_hook_b, events_b = _collect_metrics()
+    func_b, calls_b = make_flaky()
+    policy_b = AsyncPolicy(
+        retry=AsyncRetry(
+            classifier=classifier,
+            strategy=_no_sleep_strategy,
+            deadline_s=10.0,
+            max_attempts=3,
+        )
+    )
+    result_b = asyncio.run(policy_b.call(func_b, on_metric=metric_hook_b))
+
+    assert result_a == result_b == "ok"
+    assert calls_a["n"] == calls_b["n"] == 2
+    assert events_a == events_b

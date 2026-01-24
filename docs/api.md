@@ -2,11 +2,15 @@
 
 ## Policies
 
-- `RetryPolicy`, `AsyncRetryPolicy`
-  - Accept `result_classifier` for result-based retries
+- `Policy`, `AsyncPolicy`
+  - Unified resilience containers; use `Policy(retry=Retry(...))`
   - `.call(func, on_metric=None, on_log=None, operation=None)`
   - `.context(on_metric=None, on_log=None, operation=None)`
-  - `.from_config(config, classifier=...)`
+- `Retry`, `AsyncRetry`
+  - Retry components with `result_classifier` support
+  - `.call(...)`, `.context(...)`, `.from_config(config, classifier=...)`
+- `RetryPolicy`, `AsyncRetryPolicy`
+  - Backward-compatible sugar for `Policy(retry=Retry(...))`
 
 ## Decorator
 

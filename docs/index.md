@@ -35,14 +35,16 @@ async def fetch_user_async():
 Prefer policies directly?
 
 ```python
-from redress import RetryPolicy, default_classifier
+from redress import Policy, Retry, default_classifier
 from redress.strategies import decorrelated_jitter
 
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),
-    deadline_s=30,
-    max_attempts=5,
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),
+        deadline_s=30,
+        max_attempts=5,
+    )
 )
 
 result = policy.call(lambda: do_work(), operation="sync_task")
@@ -50,7 +52,7 @@ result = policy.call(lambda: do_work(), operation="sync_task")
 
 ## What’s inside
 
-- **API highlights:** `RetryPolicy` / `AsyncRetryPolicy`, `@retry`, classifiers (`default`, `http_classifier`, `sqlstate_classifier`, `pyodbc_classifier`), strategies (`decorrelated_jitter`, `equal_jitter`, `token_backoff`), hooks (`on_metric`, `on_log`), context manager reuse.
+- **API highlights:** `Policy` / `Retry`, `RetryPolicy` / `AsyncRetryPolicy`, `@retry`, classifiers (`default`, `http_classifier`, `sqlstate_classifier`, `pyodbc_classifier`), strategies (`decorrelated_jitter`, `equal_jitter`, `token_backoff`), hooks (`on_metric`, `on_log`), context manager reuse.
 - **Use cases:** HTTP 429/5xx, DB deadlocks/SQLSTATE 40001, queue/worker retries, third-party API calls, async services.
 - **Production pointers:** Set `deadline_s` and `max_attempts`, cap `max_unknown_attempts`, keep tags low-cardinality (`class`, `operation`, `err`), attach metrics/log hooks.
 

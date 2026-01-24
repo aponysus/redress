@@ -8,7 +8,7 @@ from typing import Any
 
 from .config import RetryConfig
 from .errors import ErrorClass
-from .policy import AsyncRetryPolicy, RetryPolicy
+from .policy import AsyncPolicy, AsyncRetry, AsyncRetryPolicy, Policy, Retry, RetryPolicy
 from .strategies import StrategyFn
 
 
@@ -37,7 +37,13 @@ def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
             result_classifier=obj.result_classifier,
         )
 
-    if isinstance(obj, RetryPolicy | AsyncRetryPolicy):
+    if isinstance(obj, Policy | AsyncPolicy):
+        retry = obj.retry
+        if retry is None:
+            raise TypeError(f"{type(obj).__name__} has no retry component configured.")
+        obj = retry
+
+    if isinstance(obj, Retry | AsyncRetry | RetryPolicy | AsyncRetryPolicy):
         return _ConfigView(
             source=source,
             deadline_s=obj.deadline.total_seconds(),
@@ -50,7 +56,8 @@ def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
         )
 
     raise TypeError(
-        f"Expected RetryConfig, RetryPolicy, or AsyncRetryPolicy, got {type(obj).__name__}"
+        "Expected RetryConfig, Retry/AsyncRetry, RetryPolicy/AsyncRetryPolicy, or "
+        f"Policy/AsyncPolicy, got {type(obj).__name__}"
     )
 
 
@@ -170,9 +177,11 @@ def lint_retry_config(config: RetryConfig) -> tuple[list[str], list[str]]:
     return _lint_config_view(view)
 
 
-def lint_retry_policy(policy: RetryPolicy | AsyncRetryPolicy) -> tuple[list[str], list[str]]:
+def lint_retry_policy(
+    policy: RetryPolicy | AsyncRetryPolicy | Retry | AsyncRetry | Policy | AsyncPolicy,
+) -> tuple[list[str], list[str]]:
     """
-    Lint a RetryPolicy or AsyncRetryPolicy instance and return (errors, warnings).
+    Lint a retry policy/component instance and return (errors, warnings).
     """
     view = _config_view_from_obj(policy, source="policy")
     return _lint_config_view(view)
@@ -225,11 +234,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
-    doctor = sub.add_parser("doctor", help="Lint a RetryConfig/RetryPolicy object.")
+    doctor = sub.add_parser("doctor", help="Lint a retry config/policy object.")
     doctor.add_argument(
         "target",
         help="Python import path in the form module:attribute pointing to a RetryConfig, "
-        "RetryPolicy, or AsyncRetryPolicy instance.",
+        "Policy/AsyncPolicy, Retry/AsyncRetry, or RetryPolicy/AsyncRetryPolicy instance.",
     )
     doctor.add_argument(
         "--show",

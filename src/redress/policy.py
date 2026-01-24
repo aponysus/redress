@@ -42,8 +42,7 @@ class _BaseRetryPolicy:
     ) -> None:
         if strategies is None and strategy is None:
             raise ValueError(
-                "RetryPolicy requires either a default 'strategy' or a "
-                "'strategies' mapping (or both)."
+                "Retry requires either a default 'strategy' or a " "'strategies' mapping (or both)."
             )
 
         self.classifier: ClassifierFn = classifier
@@ -351,7 +350,7 @@ class _RetryState:
 
 @dataclass
 class _RetryContext:
-    policy: "RetryPolicy"
+    policy: "Retry"
     on_metric: MetricHook | None
     on_log: LogHook | None
     operation: str | None
@@ -374,7 +373,7 @@ class _RetryContext:
 
 @dataclass
 class _AsyncRetryContext:
-    policy: "AsyncRetryPolicy"
+    policy: "AsyncRetry"
     on_metric: MetricHook | None
     on_log: LogHook | None
     operation: str | None
@@ -395,9 +394,55 @@ class _AsyncRetryContext:
         return result
 
 
-class RetryPolicy(_BaseRetryPolicy):
+@dataclass
+class _PolicyContext:
+    policy: "Policy"
+    on_metric: MetricHook | None
+    on_log: LogHook | None
+    operation: str | None
+
+    def __enter__(self) -> Callable[..., T]:
+        return self.call
+
+    def __exit__(self, exc_type: Any, exc: Any, tb: Any) -> Literal[False]:
+        return False
+
+    def call(self, func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+        result = self.policy.call(
+            lambda: func(*args, **kwargs),
+            on_metric=self.on_metric,
+            on_log=self.on_log,
+            operation=self.operation,
+        )
+        return cast(T, result)
+
+
+@dataclass
+class _AsyncPolicyContext:
+    policy: "AsyncPolicy"
+    on_metric: MetricHook | None
+    on_log: LogHook | None
+    operation: str | None
+
+    async def __aenter__(self) -> Callable[..., Awaitable[T]]:
+        return self.call
+
+    async def __aexit__(self, exc_type: Any, exc: Any, tb: Any) -> Literal[False]:
+        return False
+
+    async def call(self, func: Callable[..., Awaitable[T]], *args: Any, **kwargs: Any) -> T:
+        result = await self.policy.call(
+            lambda: func(*args, **kwargs),
+            on_metric=self.on_metric,
+            on_log=self.on_log,
+            operation=self.operation,
+        )
+        return result
+
+
+class Retry(_BaseRetryPolicy):
     """
-    Generic, pluggable retry loop with classification + backoff strategies.
+    Retry component with classification + backoff strategies.
 
     The policy itself is deliberately dumb:
       * It does not know about HTTP, SQL, Kafka, etc.
@@ -418,7 +463,7 @@ class RetryPolicy(_BaseRetryPolicy):
         that are not explicitly configured in `strategies`. This keeps the
         old "single strategy" usage working:
 
-            RetryPolicy(
+            Retry(
                 classifier=default_classifier,
                 strategy=decorrelated_jitter(),
                 ...
@@ -485,9 +530,9 @@ class RetryPolicy(_BaseRetryPolicy):
         config: RetryConfig,
         *,
         classifier: ClassifierFn,
-    ) -> "RetryPolicy":
+    ) -> "Retry":
         """
-        Construct a RetryPolicy from a RetryConfig bundle.
+        Construct a Retry from a RetryConfig bundle.
         """
         return cls(
             classifier=classifier,
@@ -731,9 +776,9 @@ class RetryPolicy(_BaseRetryPolicy):
         return _RetryContext(self, on_metric, on_log, operation)
 
 
-class AsyncRetryPolicy(_BaseRetryPolicy):
+class AsyncRetry(_BaseRetryPolicy):
     """
-    Async retry loop mirroring RetryPolicy semantics for awaitables.
+    Async retry loop mirroring Retry semantics for awaitables.
     """
 
     @classmethod
@@ -742,9 +787,9 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
         config: RetryConfig,
         *,
         classifier: ClassifierFn,
-    ) -> "AsyncRetryPolicy":
+    ) -> "AsyncRetry":
         """
-        Construct an AsyncRetryPolicy from a RetryConfig bundle.
+        Construct an AsyncRetry from a RetryConfig bundle.
         """
         return cls(
             classifier=classifier,
@@ -923,6 +968,294 @@ class AsyncRetryPolicy(_BaseRetryPolicy):
         return _AsyncRetryContext(self, on_metric, on_log, operation)
 
 
+class Policy:
+    """
+    Unified resilience container with an optional retry component.
+    """
+
+    def __init__(self, *, retry: Retry | None = None) -> None:
+        self.retry = retry
+
+    def call(
+        self,
+        func: Callable[[], Any],
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> Any:
+        if self.retry is None:
+            return func()
+        return self.retry.call(
+            func,
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+        )
+
+    def context(
+        self,
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> _PolicyContext:
+        """
+        Context manager that binds hooks/operation for multiple calls.
+        """
+        return _PolicyContext(self, on_metric, on_log, operation)
+
+
+class AsyncPolicy:
+    """
+    Unified resilience container with an optional async retry component.
+    """
+
+    def __init__(self, *, retry: AsyncRetry | None = None) -> None:
+        self.retry = retry
+
+    async def call(
+        self,
+        func: Callable[[], Awaitable[T]],
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> T:
+        if self.retry is None:
+            return await func()
+        return await self.retry.call(
+            func,
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+        )
+
+    def context(
+        self,
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> _AsyncPolicyContext:
+        """
+        Async context manager that binds hooks/operation for multiple calls.
+        """
+        return _AsyncPolicyContext(self, on_metric, on_log, operation)
+
+
+class RetryPolicy:
+    """
+    Backward-compatible sugar for Policy(retry=Retry(...)).
+    """
+
+    def __init__(
+        self,
+        *,
+        classifier: ClassifierFn,
+        result_classifier: ResultClassifierFn | None = None,
+        strategy: StrategyFn | None = None,
+        strategies: Mapping[ErrorClass, StrategyFn] | None = None,
+        deadline_s: float = 60.0,
+        max_attempts: int = 6,
+        max_unknown_attempts: int | None = 2,
+        per_class_max_attempts: Mapping[ErrorClass, int] | None = None,
+    ) -> None:
+        self._policy = Policy(
+            retry=Retry(
+                classifier=classifier,
+                result_classifier=result_classifier,
+                strategy=strategy,
+                strategies=strategies,
+                deadline_s=deadline_s,
+                max_attempts=max_attempts,
+                max_unknown_attempts=max_unknown_attempts,
+                per_class_max_attempts=per_class_max_attempts,
+            )
+        )
+
+    @classmethod
+    def from_config(
+        cls,
+        config: RetryConfig,
+        *,
+        classifier: ClassifierFn,
+    ) -> "RetryPolicy":
+        """
+        Construct a RetryPolicy from a RetryConfig bundle.
+        """
+        return cls(
+            classifier=classifier,
+            result_classifier=config.result_classifier,
+            strategy=config.default_strategy,
+            strategies=config.class_strategies,
+            deadline_s=config.deadline_s,
+            max_attempts=config.max_attempts,
+            max_unknown_attempts=config.max_unknown_attempts,
+            per_class_max_attempts=config.per_class_max_attempts,
+        )
+
+    @property
+    def policy(self) -> Policy:
+        return self._policy
+
+    @property
+    def retry(self) -> Retry:
+        retry = self._policy.retry
+        if retry is None:
+            raise AttributeError("RetryPolicy has no retry component configured.")
+        return retry
+
+    def call(
+        self,
+        func: Callable[[], Any],
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> Any:
+        return self._policy.call(
+            func,
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+        )
+
+    def context(
+        self,
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> _PolicyContext:
+        return self._policy.context(
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.retry, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_policy":
+            object.__setattr__(self, name, value)
+            return
+        if name in {"policy", "retry"}:
+            raise AttributeError(f"{name} is read-only.")
+        policy = self.__dict__.get("_policy")
+        if policy is not None and policy.retry is not None and hasattr(policy.retry, name):
+            setattr(policy.retry, name, value)
+            return
+        object.__setattr__(self, name, value)
+
+
+class AsyncRetryPolicy:
+    """
+    Backward-compatible sugar for AsyncPolicy(retry=AsyncRetry(...)).
+    """
+
+    def __init__(
+        self,
+        *,
+        classifier: ClassifierFn,
+        result_classifier: ResultClassifierFn | None = None,
+        strategy: StrategyFn | None = None,
+        strategies: Mapping[ErrorClass, StrategyFn] | None = None,
+        deadline_s: float = 60.0,
+        max_attempts: int = 6,
+        max_unknown_attempts: int | None = 2,
+        per_class_max_attempts: Mapping[ErrorClass, int] | None = None,
+    ) -> None:
+        self._policy = AsyncPolicy(
+            retry=AsyncRetry(
+                classifier=classifier,
+                result_classifier=result_classifier,
+                strategy=strategy,
+                strategies=strategies,
+                deadline_s=deadline_s,
+                max_attempts=max_attempts,
+                max_unknown_attempts=max_unknown_attempts,
+                per_class_max_attempts=per_class_max_attempts,
+            )
+        )
+
+    @classmethod
+    def from_config(
+        cls,
+        config: RetryConfig,
+        *,
+        classifier: ClassifierFn,
+    ) -> "AsyncRetryPolicy":
+        """
+        Construct an AsyncRetryPolicy from a RetryConfig bundle.
+        """
+        return cls(
+            classifier=classifier,
+            result_classifier=config.result_classifier,
+            strategy=config.default_strategy,
+            strategies=config.class_strategies,
+            deadline_s=config.deadline_s,
+            max_attempts=config.max_attempts,
+            max_unknown_attempts=config.max_unknown_attempts,
+            per_class_max_attempts=config.per_class_max_attempts,
+        )
+
+    @property
+    def policy(self) -> AsyncPolicy:
+        return self._policy
+
+    @property
+    def retry(self) -> AsyncRetry:
+        retry = self._policy.retry
+        if retry is None:
+            raise AttributeError("AsyncRetryPolicy has no retry component configured.")
+        return retry
+
+    async def call(
+        self,
+        func: Callable[[], Awaitable[T]],
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> T:
+        return await self._policy.call(
+            func,
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+        )
+
+    def context(
+        self,
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+    ) -> _AsyncPolicyContext:
+        return self._policy.context(
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.retry, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_policy":
+            object.__setattr__(self, name, value)
+            return
+        if name in {"policy", "retry"}:
+            raise AttributeError(f"{name} is read-only.")
+        policy = self.__dict__.get("_policy")
+        if policy is not None and policy.retry is not None and hasattr(policy.retry, name):
+            setattr(policy.retry, name, value)
+            return
+        object.__setattr__(self, name, value)
+
+
 @overload
 def retry(
     func: None = None,
@@ -1073,13 +1406,15 @@ def _example_usage() -> None:
         # UNKNOWN will fall back to the default strategy below
     }
 
-    policy = RetryPolicy(
-        classifier=default_classifier,
-        strategy=decorrelated_jitter(max_s=10.0),  # default for UNKNOWN, etc.
-        strategies=strategies,
-        deadline_s=120.0,
-        max_attempts=8,
-        max_unknown_attempts=2,
+    policy = Policy(
+        retry=Retry(
+            classifier=default_classifier,
+            strategy=decorrelated_jitter(max_s=10.0),  # default for UNKNOWN, etc.
+            strategies=strategies,
+            deadline_s=120.0,
+            max_attempts=8,
+            max_unknown_attempts=2,
+        )
     )
 
     def flaky_call() -> str:

@@ -1,5 +1,24 @@
 # redress usage patterns
 
+## Unified Policy model
+
+`Policy` is the unified resilience container. Configure retries via `Retry`,
+or use `RetryPolicy` as a convenient shortcut.
+
+```python
+from redress import Policy, Retry, default_classifier
+from redress.strategies import decorrelated_jitter
+
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),
+        deadline_s=30.0,
+        max_attempts=5,
+    )
+)
+```
+
 ## Per-class strategies and limits
 
 ```python

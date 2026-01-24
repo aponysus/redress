@@ -5,7 +5,7 @@ from typing import Any
 
 class ErrorClass(Enum):
     """
-    Coarse-grained error categories used by RetryPolicy and strategies.
+    Coarse-grained error categories used by Retry/RetryPolicy and strategies.
 
     This is intentionally small and generic so that:
       * You can map many different domain-specific exceptions into it.

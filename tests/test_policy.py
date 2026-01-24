@@ -15,7 +15,7 @@ from redress.errors import (
     RetryExhaustedError,
     StopReason,
 )
-from redress.policy import MetricHook, RetryPolicy
+from redress.policy import MetricHook, Policy, Retry, RetryPolicy
 from redress.strategies import BackoffContext, decorrelated_jitter
 
 
@@ -783,6 +783,20 @@ def test_retry_policy_from_config_creates_equivalent_policy() -> None:
     )
 
 
+def test_retry_from_config() -> None:
+    cfg = RetryConfig(
+        deadline_s=5.0,
+        max_attempts=2,
+        max_unknown_attempts=1,
+        default_strategy=_no_sleep_strategy,
+    )
+
+    retry = Retry.from_config(cfg, classifier=lambda e: ErrorClass.UNKNOWN)
+
+    assert retry.deadline.total_seconds() == cfg.deadline_s
+    assert retry.max_attempts == cfg.max_attempts
+
+
 # ---------------------------------------------------------------------------
 # Strategy registry behavior
 # ---------------------------------------------------------------------------
@@ -1265,3 +1279,47 @@ def test_result_classifier_emits_cause_tag(monkeypatch: pytest.MonkeyPatch) -> N
     retry_event = next(event for event in events if event[0] == "retry")
     assert retry_event[3]["cause"] == "result"
     assert "err" not in retry_event[3]
+
+
+def test_policy_matches_retry_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    def classifier(exc: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def make_flaky() -> tuple[object, dict[str, int]]:
+        calls = {"n": 0}
+
+        def func() -> str:
+            calls["n"] += 1
+            if calls["n"] < 2:
+                raise ValueError("boom")
+            return "ok"
+
+        return func, calls
+
+    monkeypatch.setattr("redress.policy.time.sleep", lambda s: None)
+
+    metric_hook_a, events_a = _collect_metrics()
+    func_a, calls_a = make_flaky()
+    policy_a = RetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=10.0,
+        max_attempts=3,
+    )
+    result_a = policy_a.call(func_a, on_metric=metric_hook_a)
+
+    metric_hook_b, events_b = _collect_metrics()
+    func_b, calls_b = make_flaky()
+    policy_b = Policy(
+        retry=Retry(
+            classifier=classifier,
+            strategy=_no_sleep_strategy,
+            deadline_s=10.0,
+            max_attempts=3,
+        )
+    )
+    result_b = policy_b.call(func_b, on_metric=metric_hook_b)
+
+    assert result_a == result_b == "ok"
+    assert calls_a["n"] == calls_b["n"] == 2
+    assert events_a == events_b

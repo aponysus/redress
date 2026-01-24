@@ -2,17 +2,20 @@
 
 ## Policies
 
-`RetryPolicy` and `AsyncRetryPolicy` wrap sync/async callables:
+`Policy` and `AsyncPolicy` are the unified containers. Configure retries with
+`Retry` or use `RetryPolicy` / `AsyncRetryPolicy` as sugar:
 
 ```python
-from redress import RetryPolicy, AsyncRetryPolicy, default_classifier
+from redress import Policy, Retry, default_classifier
 from redress.strategies import decorrelated_jitter
 
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),
-    deadline_s=60,
-    max_attempts=6,
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),
+        deadline_s=60,
+        max_attempts=6,
+    )
 )
 
 result = policy.call(lambda: do_work(), operation="sync_op")
