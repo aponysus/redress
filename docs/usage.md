@@ -240,6 +240,19 @@ async with async_policy.context(operation="batch") as retry:
     await retry(do_async_work)
 ```
 
+## Structured outcomes
+
+Use `execute()` when you want metadata without parsing hooks:
+
+```python
+outcome = policy.execute(do_work, operation="sync_task")
+
+if outcome.ok:
+    print(outcome.value, outcome.attempts)
+else:
+    print(outcome.stop_reason, outcome.last_class)
+```
+
 ## Cooperative abort (shutdown/drain)
 
 Worker loops often need to stop retries when shutting down. Use `abort_if` or

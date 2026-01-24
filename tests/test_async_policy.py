@@ -173,6 +173,62 @@ def test_async_policy_abort_if_skips_sleep(monkeypatch: pytest.MonkeyPatch) -> N
     assert slept["called"] is False
 
 
+def test_async_policy_execute_success_after_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    async def func() -> str:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RateLimitError("429")
+        return "ok"
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=5,
+    )
+
+    outcome = asyncio.run(policy.execute(func))
+    assert outcome.ok is True
+    assert outcome.value == "ok"
+    assert outcome.attempts == 3
+    assert outcome.stop_reason is None
+
+
+def test_async_policy_execute_result_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def func() -> str:
+        return "bad"
+
+    def result_classifier(_: str) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=1,
+    )
+
+    outcome = asyncio.run(policy.execute(func))
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert outcome.attempts == 1
+    assert outcome.cause == "result"
+    assert outcome.last_result == "bad"
+
+
 def test_async_context_strategy_receives_retry_after(monkeypatch: pytest.MonkeyPatch) -> None:
     class RateLimitError(Exception):
         pass

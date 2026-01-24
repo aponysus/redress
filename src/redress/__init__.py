@@ -22,6 +22,7 @@ from .policy import (
     AsyncRetryPolicy,
     Policy,
     Retry,
+    RetryOutcome,
     RetryPolicy,
     retry,
 )
@@ -40,6 +41,7 @@ __all__ = [
     "RetryPolicy",
     "Policy",
     "Retry",
+    "RetryOutcome",
     "RetryConfig",
     "CircuitBreaker",
     "CircuitState",

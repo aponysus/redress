@@ -186,6 +186,195 @@ def test_policy_abort_if_skips_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
     assert slept["called"] is False
 
 
+def test_policy_execute_success_after_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RateLimitError("429")
+        return "ok"
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda _: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=5,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is True
+    assert outcome.value == "ok"
+    assert outcome.attempts == 3
+    assert outcome.stop_reason is None
+
+
+def test_policy_execute_stop_reason_permanent() -> None:
+    def func() -> None:
+        raise PermanentError("stop")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.NON_RETRYABLE_CLASS
+    assert outcome.attempts == 1
+    assert outcome.last_class == ErrorClass.PERMANENT
+    assert isinstance(outcome.last_exception, PermanentError)
+
+
+def test_policy_execute_stop_reason_per_class_cap() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        per_class_max_attempts={ErrorClass.TRANSIENT: 0},
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_PER_CLASS
+    assert outcome.attempts == 1
+    assert outcome.last_class == ErrorClass.TRANSIENT
+
+
+def test_policy_execute_stop_reason_unknown_cap() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.UNKNOWN
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=_no_sleep_strategy,
+        max_unknown_attempts=0,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_UNKNOWN_ATTEMPTS
+    assert outcome.attempts == 1
+    assert outcome.last_class == ErrorClass.UNKNOWN
+
+
+def test_policy_execute_stop_reason_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _FakeTime(0.0)
+    monkeypatch.setattr(_state_mod.time, "monotonic", clock.monotonic)
+
+    def func() -> None:
+        clock.advance(2.0)
+        raise RateLimitError("429")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=1.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.DEADLINE_EXCEEDED
+    assert outcome.attempts == 1
+
+
+def test_policy_execute_stop_reason_max_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda _: None)
+
+    def func() -> None:
+        raise RateLimitError("429")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=1,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert outcome.attempts == 1
+
+
+def test_policy_execute_stop_reason_no_strategy() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=None,
+        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.NO_STRATEGY
+    assert outcome.attempts == 1
+
+
+def test_policy_execute_stop_reason_aborted() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func, abort_if=lambda: True)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.ABORTED
+    assert outcome.attempts == 0
+
+
+def test_policy_execute_result_failure() -> None:
+    def func() -> str:
+        return "bad"
+
+    def result_classifier(_: str) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=1,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert outcome.attempts == 1
+    assert outcome.cause == "result"
+    assert outcome.last_result == "bad"
+
+
 def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
     """
     AUTH errors should not be retried and emit 'permanent_fail' with class tag.

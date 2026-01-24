@@ -5,10 +5,12 @@
 - `Policy`, `AsyncPolicy`
   - Unified resilience containers; use `Policy(retry=Retry(...))`
   - `.call(func, on_metric=None, on_log=None, operation=None, abort_if=None)`
+  - `.execute(func, on_metric=None, on_log=None, operation=None, abort_if=None)`
   - `.context(on_metric=None, on_log=None, operation=None, abort_if=None)`
 - `Retry`, `AsyncRetry`
   - Retry components with `result_classifier` support
-  - `.call(..., abort_if=None)`, `.context(..., abort_if=None)`, `.from_config(config, classifier=...)`
+  - `.call(..., abort_if=None)`, `.execute(..., abort_if=None)`, `.context(..., abort_if=None)`
+  - `.from_config(config, classifier=...)`
 - `RetryPolicy`, `AsyncRetryPolicy`
   - Backward-compatible sugar for `Policy(retry=Retry(...))`
 - `CircuitBreaker`
@@ -46,6 +48,10 @@
 - `RetryExhaustedError` terminal error (result-based exhaustion)
 - `AbortRetryError` cooperative abort signal (alias: `AbortRetry`)
 - Marker exceptions: `PermanentError`, `RateLimitError`, `ConcurrencyError`
+
+## Outcomes
+
+- `RetryOutcome[T]` from `execute()` with attempts, stop_reason, and last error info
 
 ## Metrics helpers
 

@@ -6,7 +6,7 @@ from ..errors import ErrorClass
 from ..strategies import StrategyFn
 from .container import AsyncPolicy, Policy
 from .retry import AsyncRetry, Retry
-from .types import AbortPredicate, ClassifierFn, LogHook, MetricHook, T
+from .types import AbortPredicate, ClassifierFn, LogHook, MetricHook, RetryOutcome, T
 
 
 class RetryPolicy:
@@ -81,6 +81,23 @@ class RetryPolicy:
         abort_if: AbortPredicate | None = None,
     ) -> Any:
         return self._policy.call(
+            func,
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+            abort_if=abort_if,
+        )
+
+    def execute(
+        self,
+        func: Callable[[], Any],
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
+    ) -> RetryOutcome[Any]:
+        return self._policy.execute(
             func,
             on_metric=on_metric,
             on_log=on_log,
@@ -191,6 +208,23 @@ class AsyncRetryPolicy:
         abort_if: AbortPredicate | None = None,
     ) -> T:
         return await self._policy.call(
+            func,
+            on_metric=on_metric,
+            on_log=on_log,
+            operation=operation,
+            abort_if=abort_if,
+        )
+
+    async def execute(
+        self,
+        func: Callable[[], Awaitable[T]],
+        *,
+        on_metric: MetricHook | None = None,
+        on_log: LogHook | None = None,
+        operation: str | None = None,
+        abort_if: AbortPredicate | None = None,
+    ) -> RetryOutcome[T]:
+        return await self._policy.execute(
             func,
             on_metric=on_metric,
             on_log=on_log,
