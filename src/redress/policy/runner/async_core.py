@@ -1,12 +1,17 @@
+"""
+Asynchronous retry runner.
+
+This module implements the async retry loop. It uses shared logic from
+logic.py for decision-making while keeping I/O operations (func calls, sleep) here.
+"""
+
 import asyncio
 from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
-from ...classify import Classification
 from ...errors import AbortRetryError, RetryExhaustedError, StopReason
-from ...events import EventName
 from ...sleep import SleepFn
-from ..base import _BaseRetryPolicy, _normalize_classification
+from ..base import _BaseRetryPolicy
 from ..retry_helpers import (
     _abort_outcome,
     _async_failure_outcome,
@@ -20,14 +25,72 @@ from ..types import (
     AbortPredicate,
     AttemptDecision,
     AttemptHook,
-    FailureCause,
     LogHook,
     MetricHook,
     RetryOutcome,
     RetryTimeline,
     T,
 )
+from .logic import (
+    AbortAction,
+    AttemptState,
+    ContinueAction,
+    ScheduledAction,
+    build_exhausted_outcome,
+    determine_action_from_outcome,
+    emit_success,
+    handle_abort_in_call,
+    raise_exhausted_call,
+    raise_scheduled,
+    should_classify_result,
+)
 from .timeline import _resolve_timeline
+
+
+def _handle_abort_attempt_end(
+    hook: AttemptHook | None,
+    state: _RetryState,
+    attempt: int,
+    attempt_state: AttemptState,
+    exc: BaseException,
+) -> None:
+    """Call attempt_end hook for abort if not already called."""
+    if attempt_state.started and not attempt_state.end_called:
+        _call_attempt_end(
+            hook,
+            state=state,
+            attempt=attempt,
+            classification=attempt_state.classification,
+            exception=exc,
+            result=attempt_state.result,
+            decision=AttemptDecision.ABORTED,
+            stop_reason=StopReason.ABORTED,
+            cause=attempt_state.cause,
+            sleep_s=None,
+        )
+        attempt_state.end_called = True
+
+
+def _handle_success_attempt_end(
+    hook: AttemptHook | None,
+    state: _RetryState,
+    attempt: int,
+    result: Any,
+) -> None:
+    """Emit success and call attempt_end hook."""
+    emit_success(state, attempt)
+    _call_attempt_end(
+        hook,
+        state=state,
+        attempt=attempt,
+        classification=None,
+        exception=None,
+        result=result,
+        decision=AttemptDecision.SUCCESS,
+        stop_reason=None,
+        cause=None,
+        sleep_s=None,
+    )
 
 
 async def _run_async_call(
@@ -42,6 +105,7 @@ async def _run_async_call(
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
 ) -> T:
+    """Execute async func with retries, raising on failure."""
     state = _RetryState(
         policy=policy,
         on_metric=on_metric,
@@ -51,40 +115,17 @@ async def _run_async_call(
     )
 
     for attempt in range(1, policy.max_attempts + 1):
-        attempt_started = False
-        attempt_end_called = False
-        attempt_classification: Classification | None = None
-        attempt_result: Any | None = None
-        attempt_cause: FailureCause | None = None
+        attempt_state = AttemptState()
 
         state.check_abort(attempt - 1)
         _call_attempt_start(attempt_start_hook, state=state, attempt=attempt)
-        attempt_started = True
+        attempt_state.started = True
+
         try:
             result = await func()
         except AbortRetryError as exc:
-            if attempt_started and not attempt_end_called:
-                _call_attempt_end(
-                    attempt_end_hook,
-                    state=state,
-                    attempt=attempt,
-                    classification=attempt_classification,
-                    exception=exc,
-                    result=attempt_result,
-                    decision=AttemptDecision.ABORTED,
-                    stop_reason=StopReason.ABORTED,
-                    cause=attempt_cause,
-                    sleep_s=None,
-                )
-                attempt_end_called = True
-            if state.last_stop_reason is not StopReason.ABORTED:
-                state.last_stop_reason = StopReason.ABORTED
-                state.emit(
-                    EventName.ABORTED.value,
-                    attempt,
-                    0.0,
-                    stop_reason=StopReason.ABORTED,
-                )
+            _handle_abort_attempt_end(attempt_end_hook, state, attempt, attempt_state, exc)
+            handle_abort_in_call(state, attempt)
             raise
         except asyncio.CancelledError:
             raise
@@ -93,88 +134,53 @@ async def _run_async_call(
         except RetryExhaustedError:
             raise
         except Exception as exc:
-            attempt_cause = "exception"
+            attempt_state.cause = "exception"
             state.check_abort(attempt)
             decision = state.handle_exception(exc, attempt)
-            attempt_classification = state.last_classification
+            attempt_state.classification = state.last_classification
             if decision.action != "raise":
                 state.check_abort(attempt)
+
             outcome = await _async_failure_outcome(
                 state=state,
                 attempt=attempt,
                 decision=decision,
-                classification=attempt_classification,
+                classification=attempt_state.classification,
                 exception=exc,
                 result=None,
-                cause=attempt_cause,
+                cause=attempt_state.cause,
                 sleep_fn=sleep_fn,
             )
             _call_attempt_end_from_outcome(
-                attempt_end_hook,
-                state=state,
-                attempt=attempt,
-                outcome=outcome,
+                attempt_end_hook, state=state, attempt=attempt, outcome=outcome
             )
-            attempt_end_called = True
-            if outcome.decision is AttemptDecision.RETRY:
+            attempt_state.end_called = True
+
+            action = determine_action_from_outcome(outcome, state, attempt)
+            if isinstance(action, ContinueAction):
                 continue
-            if outcome.decision is AttemptDecision.ABORTED:
+            if isinstance(action, AbortAction):
                 raise AbortRetryError() from None
-            if outcome.decision is AttemptDecision.SCHEDULED:
-                stop_reason = outcome.stop_reason or state.last_stop_reason or StopReason.SCHEDULED
-                raise RetryExhaustedError(
-                    stop_reason=stop_reason,
-                    attempts=attempt,
-                    last_class=state.last_class,
-                    last_exception=state.last_exc,
-                    last_result=state.last_result,
-                    next_sleep_s=outcome.sleep_s,
-                ) from None
+            if isinstance(action, ScheduledAction):
+                raise_scheduled(action)
             raise
 
-        if policy.result_classifier is None:
-            state.emit(EventName.SUCCESS.value, attempt, 0.0)
-            _call_attempt_end(
-                attempt_end_hook,
-                state=state,
-                attempt=attempt,
-                classification=None,
-                exception=None,
-                result=result,
-                decision=AttemptDecision.SUCCESS,
-                stop_reason=None,
-                cause=None,
-                sleep_s=None,
-            )
-            attempt_end_called = True
+        # Success path: check if result needs classification
+        needs_retry, classification = should_classify_result(policy, result)
+        if not needs_retry:
+            _handle_success_attempt_end(attempt_end_hook, state, attempt, result)
             return result
+        assert classification is not None
 
-        classification_result = policy.result_classifier(result)
-        if classification_result is None:
-            state.emit(EventName.SUCCESS.value, attempt, 0.0)
-            _call_attempt_end(
-                attempt_end_hook,
-                state=state,
-                attempt=attempt,
-                classification=None,
-                exception=None,
-                result=result,
-                decision=AttemptDecision.SUCCESS,
-                stop_reason=None,
-                cause=None,
-                sleep_s=None,
-            )
-            attempt_end_called = True
-            return result
-
+        # Result-based retry
         state.check_abort(attempt)
-        classification = _normalize_classification(classification_result)
-        attempt_classification = classification
-        attempt_result = result
-        attempt_cause = "result"
+        attempt_state.classification = classification
+        attempt_state.result = result
+        attempt_state.cause = "result"
         decision = state.handle_result(result, classification, attempt)
         if decision.action != "raise":
             state.check_abort(attempt)
+
         outcome = await _async_failure_outcome(
             state=state,
             attempt=attempt,
@@ -182,56 +188,34 @@ async def _run_async_call(
             classification=classification,
             exception=None,
             result=result,
-            cause=attempt_cause,
+            cause=attempt_state.cause,
             sleep_fn=sleep_fn,
         )
         _call_attempt_end_from_outcome(
-            attempt_end_hook,
-            state=state,
-            attempt=attempt,
-            outcome=outcome,
+            attempt_end_hook, state=state, attempt=attempt, outcome=outcome
         )
-        attempt_end_called = True
-        if outcome.decision is AttemptDecision.RETRY:
-            continue
-        if outcome.decision is AttemptDecision.ABORTED:
-            raise AbortRetryError()
+        attempt_state.end_called = True
 
-        stop_reason = (
-            outcome.stop_reason or state.last_stop_reason or StopReason.MAX_ATTEMPTS_GLOBAL
-        )
-        next_sleep_s = outcome.sleep_s if outcome.decision is AttemptDecision.SCHEDULED else None
+        action = determine_action_from_outcome(outcome, state, attempt, for_result=True)
+        if isinstance(action, ContinueAction):
+            continue
+        if isinstance(action, AbortAction):
+            raise AbortRetryError()
+        if isinstance(action, ScheduledAction):
+            raise_scheduled(action)
         raise RetryExhaustedError(
-            stop_reason=stop_reason,
+            stop_reason=(
+                action.stop_reason
+                if isinstance(action, ScheduledAction)
+                else state.last_stop_reason or StopReason.MAX_ATTEMPTS_GLOBAL
+            ),
             attempts=attempt,
             last_class=state.last_class,
             last_exception=None,
             last_result=state.last_result,
-            next_sleep_s=next_sleep_s,
         )
 
-    state.emit(
-        EventName.MAX_ATTEMPTS_EXCEEDED.value,
-        policy.max_attempts,
-        0.0,
-        state.last_class,
-        state.last_exc,
-        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
-        cause=state.last_cause,
-    )
-    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
-    if state.last_cause == "result":
-        raise RetryExhaustedError(
-            stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
-            attempts=policy.max_attempts,
-            last_class=state.last_class,
-            last_exception=None,
-            last_result=state.last_result,
-        )
-    if state.last_exc is not None and state.last_exc.__traceback__ is not None:
-        raise state.last_exc.with_traceback(state.last_exc.__traceback__)
-
-    raise RuntimeError("Retry attempts exhausted with no captured exception")
+    raise_exhausted_call(state, policy)
 
 
 async def _run_async_execute(
@@ -247,6 +231,7 @@ async def _run_async_execute(
     attempt_end_hook: AttemptHook | None,
     capture_timeline: bool | RetryTimeline | None,
 ) -> RetryOutcome[T]:
+    """Execute async func with retries, returning outcome."""
     timeline, metric_hook = _resolve_timeline(capture_timeline, on_metric)
     state = _RetryState(
         policy=policy,
@@ -258,79 +243,37 @@ async def _run_async_execute(
     attempts = 0
 
     for attempt in range(1, policy.max_attempts + 1):
-        attempt_started = False
-        attempt_end_called = False
-        attempt_classification: Classification | None = None
-        attempt_result: Any | None = None
-        attempt_cause: FailureCause | None = None
+        attempt_state = AttemptState()
 
         try:
             state.check_abort(attempt - 1)
             _call_attempt_start(attempt_start_hook, state=state, attempt=attempt)
-            attempt_started = True
+            attempt_state.started = True
             attempts = attempt
+
             result = await func()
-            if policy.result_classifier is None:
-                state.emit(EventName.SUCCESS.value, attempt, 0.0)
-                _call_attempt_end(
-                    attempt_end_hook,
-                    state=state,
-                    attempt=attempt,
-                    classification=None,
-                    exception=None,
-                    result=result,
-                    decision=AttemptDecision.SUCCESS,
-                    stop_reason=None,
-                    cause=None,
-                    sleep_s=None,
-                )
-                attempt_end_called = True
+
+            # Success path: check if result needs classification
+            needs_retry, classification = should_classify_result(policy, result)
+            if not needs_retry:
+                _handle_success_attempt_end(attempt_end_hook, state, attempt, result)
                 return cast(
                     RetryOutcome[T],
                     _build_outcome(
-                        ok=True,
-                        value=result,
-                        state=state,
-                        attempts=attempts,
-                        timeline=timeline,
+                        ok=True, value=result, state=state, attempts=attempts, timeline=timeline
                     ),
                 )
+            assert classification is not None
 
-            classification_result = policy.result_classifier(result)
-            if classification_result is None:
-                state.emit(EventName.SUCCESS.value, attempt, 0.0)
-                _call_attempt_end(
-                    attempt_end_hook,
-                    state=state,
-                    attempt=attempt,
-                    classification=None,
-                    exception=None,
-                    result=result,
-                    decision=AttemptDecision.SUCCESS,
-                    stop_reason=None,
-                    cause=None,
-                    sleep_s=None,
-                )
-                attempt_end_called = True
-                return cast(
-                    RetryOutcome[T],
-                    _build_outcome(
-                        ok=True,
-                        value=result,
-                        state=state,
-                        attempts=attempts,
-                        timeline=timeline,
-                    ),
-                )
-
+            # Result-based retry
             state.check_abort(attempt)
-            classification = _normalize_classification(classification_result)
-            attempt_classification = classification
-            attempt_result = result
-            attempt_cause = "result"
+            attempt_state.classification = classification
+            attempt_state.result = result
+            attempt_state.cause = "result"
             decision = state.handle_result(result, classification, attempt)
             if decision.action != "raise":
                 state.check_abort(attempt)
+
             outcome = await _async_failure_outcome(
                 state=state,
                 attempt=attempt,
@@ -338,19 +281,18 @@ async def _run_async_execute(
                 classification=classification,
                 exception=None,
                 result=result,
-                cause=attempt_cause,
+                cause=attempt_state.cause,
                 sleep_fn=sleep_fn,
             )
             _call_attempt_end_from_outcome(
-                attempt_end_hook,
-                state=state,
-                attempt=attempt,
-                outcome=outcome,
+                attempt_end_hook, state=state, attempt=attempt, outcome=outcome
             )
-            attempt_end_called = True
-            if outcome.decision is AttemptDecision.RETRY:
+            attempt_state.end_called = True
+
+            action = determine_action_from_outcome(outcome, state, attempt, for_result=True)
+            if isinstance(action, ContinueAction):
                 continue
-            if outcome.decision is AttemptDecision.ABORTED:
+            if isinstance(action, AbortAction):
                 return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
 
             next_sleep_s = (
@@ -367,21 +309,9 @@ async def _run_async_execute(
                     timeline=timeline,
                 ),
             )
+
         except AbortRetryError as exc:
-            if attempt_started and not attempt_end_called:
-                _call_attempt_end(
-                    attempt_end_hook,
-                    state=state,
-                    attempt=attempt,
-                    classification=attempt_classification,
-                    exception=exc,
-                    result=attempt_result,
-                    decision=AttemptDecision.ABORTED,
-                    stop_reason=StopReason.ABORTED,
-                    cause=attempt_cause,
-                    sleep_s=None,
-                )
-                attempt_end_called = True
+            _handle_abort_attempt_end(attempt_end_hook, state, attempt, attempt_state, exc)
             return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
         except asyncio.CancelledError:
             raise
@@ -390,68 +320,41 @@ async def _run_async_execute(
         except RetryExhaustedError:
             raise
         except Exception as exc:
-            attempt_cause = "exception"
+            attempt_state.cause = "exception"
             try:
                 state.check_abort(attempt)
             except AbortRetryError:
-                if attempt_started and not attempt_end_called:
-                    _call_attempt_end(
-                        attempt_end_hook,
-                        state=state,
-                        attempt=attempt,
-                        classification=attempt_classification,
-                        exception=exc,
-                        result=attempt_result,
-                        decision=AttemptDecision.ABORTED,
-                        stop_reason=StopReason.ABORTED,
-                        cause=attempt_cause,
-                        sleep_s=None,
-                    )
-                    attempt_end_called = True
+                _handle_abort_attempt_end(attempt_end_hook, state, attempt, attempt_state, exc)
                 return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
 
             decision = state.handle_exception(exc, attempt)
-            attempt_classification = state.last_classification
+            attempt_state.classification = state.last_classification
             if decision.action != "raise":
                 try:
                     state.check_abort(attempt)
                 except AbortRetryError:
-                    if attempt_started and not attempt_end_called:
-                        _call_attempt_end(
-                            attempt_end_hook,
-                            state=state,
-                            attempt=attempt,
-                            classification=attempt_classification,
-                            exception=exc,
-                            result=None,
-                            decision=AttemptDecision.ABORTED,
-                            stop_reason=StopReason.ABORTED,
-                            cause=attempt_cause,
-                            sleep_s=None,
-                        )
-                        attempt_end_called = True
+                    _handle_abort_attempt_end(attempt_end_hook, state, attempt, attempt_state, exc)
                     return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
 
             outcome = await _async_failure_outcome(
                 state=state,
                 attempt=attempt,
                 decision=decision,
-                classification=attempt_classification,
+                classification=attempt_state.classification,
                 exception=exc,
                 result=None,
-                cause=attempt_cause,
+                cause=attempt_state.cause,
                 sleep_fn=sleep_fn,
             )
             _call_attempt_end_from_outcome(
-                attempt_end_hook,
-                state=state,
-                attempt=attempt,
-                outcome=outcome,
+                attempt_end_hook, state=state, attempt=attempt, outcome=outcome
             )
-            attempt_end_called = True
-            if outcome.decision is AttemptDecision.RETRY:
+            attempt_state.end_called = True
+
+            action = determine_action_from_outcome(outcome, state, attempt)
+            if isinstance(action, ContinueAction):
                 continue
-            if outcome.decision is AttemptDecision.ABORTED:
+            if isinstance(action, AbortAction):
                 return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
 
             next_sleep_s = (
@@ -469,17 +372,4 @@ async def _run_async_execute(
                 ),
             )
 
-    state.emit(
-        EventName.MAX_ATTEMPTS_EXCEEDED.value,
-        policy.max_attempts,
-        0.0,
-        state.last_class,
-        state.last_exc,
-        stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
-        cause=state.last_cause,
-    )
-    state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
-    return cast(
-        RetryOutcome[T],
-        _build_outcome(ok=False, value=None, state=state, attempts=attempts, timeline=timeline),
-    )
+    return cast(RetryOutcome[T], build_exhausted_outcome(state, policy, attempts, timeline))

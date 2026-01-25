@@ -346,25 +346,23 @@ async def _async_failure_outcome(
     )
 
 
-def _sync_sleep_action(
-    *,
+def _handle_sleep_decision(
+    action: SleepDecision,
     state: _RetryState,
     attempt: int,
     decision: _RetryDecision,
-    sleep_fn: SleepFn | None,
 ) -> SleepDecision:
-    if sleep_fn is None:
-        time.sleep(decision.sleep_s)
-        return SleepDecision.SLEEP
+    """
+    Process a sleep decision and emit appropriate events.
 
-    ctx = decision.context
-    if ctx is None:
-        raise RuntimeError("Missing BackoffContext for sleep decision.")
+    This is the shared logic for both sync and async sleep handling.
+    The actual sleep (time.sleep or asyncio.sleep) is done by the caller.
 
-    action = sleep_fn(ctx, decision.sleep_s)
+    Returns the action unchanged (for chaining).
+    """
     if action is SleepDecision.SLEEP:
-        time.sleep(decision.sleep_s)
         return action
+
     if action is SleepDecision.DEFER:
         state.last_stop_reason = StopReason.SCHEDULED
         state.emit(
@@ -377,6 +375,7 @@ def _sync_sleep_action(
             cause=state.last_cause,
         )
         return action
+
     if action is SleepDecision.ABORT:
         if state.last_stop_reason is not StopReason.ABORTED:
             state.last_stop_reason = StopReason.ABORTED
@@ -387,7 +386,33 @@ def _sync_sleep_action(
                 stop_reason=StopReason.ABORTED,
             )
         return action
+
     raise ValueError("sleep handler must return a SleepDecision.")
+
+
+def _sync_sleep_action(
+    *,
+    state: _RetryState,
+    attempt: int,
+    decision: _RetryDecision,
+    sleep_fn: SleepFn | None,
+) -> SleepDecision:
+    """Execute sync sleep and handle sleep decision."""
+    if sleep_fn is None:
+        time.sleep(decision.sleep_s)
+        return SleepDecision.SLEEP
+
+    ctx = decision.context
+    if ctx is None:
+        raise RuntimeError("Missing BackoffContext for sleep decision.")
+
+    action = sleep_fn(ctx, decision.sleep_s)
+    result = _handle_sleep_decision(action, state, attempt, decision)
+
+    if result is SleepDecision.SLEEP:
+        time.sleep(decision.sleep_s)
+
+    return result
 
 
 async def _async_sleep_action(
@@ -397,6 +422,7 @@ async def _async_sleep_action(
     decision: _RetryDecision,
     sleep_fn: SleepFn | None,
 ) -> SleepDecision:
+    """Execute async sleep and handle sleep decision."""
     if sleep_fn is None:
         await asyncio.sleep(decision.sleep_s)
         return SleepDecision.SLEEP
@@ -406,29 +432,9 @@ async def _async_sleep_action(
         raise RuntimeError("Missing BackoffContext for sleep decision.")
 
     action = sleep_fn(ctx, decision.sleep_s)
-    if action is SleepDecision.SLEEP:
+    result = _handle_sleep_decision(action, state, attempt, decision)
+
+    if result is SleepDecision.SLEEP:
         await asyncio.sleep(decision.sleep_s)
-        return action
-    if action is SleepDecision.DEFER:
-        state.last_stop_reason = StopReason.SCHEDULED
-        state.emit(
-            EventName.SCHEDULED.value,
-            attempt,
-            decision.sleep_s,
-            state.last_class,
-            state.last_exc,
-            stop_reason=StopReason.SCHEDULED,
-            cause=state.last_cause,
-        )
-        return action
-    if action is SleepDecision.ABORT:
-        if state.last_stop_reason is not StopReason.ABORTED:
-            state.last_stop_reason = StopReason.ABORTED
-            state.emit(
-                EventName.ABORTED.value,
-                attempt,
-                0.0,
-                stop_reason=StopReason.ABORTED,
-            )
-        return action
-    raise ValueError("sleep handler must return a SleepDecision.")
+
+    return result

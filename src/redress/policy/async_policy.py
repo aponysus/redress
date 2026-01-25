@@ -1,10 +1,13 @@
+"""
+Asynchronous Policy class - unified resilience container.
+
+Uses shared helpers from execution.py for circuit breaker integration.
+"""
+
 import asyncio
-import time
 from collections.abc import Awaitable, Callable
-from typing import cast
 
 from ..circuit import CircuitBreaker
-from ..classify import default_classifier
 from ..errors import (
     AbortRetryError,
     CircuitOpenError,
@@ -13,13 +16,24 @@ from ..errors import (
     StopReason,
 )
 from ..sleep import SleepFn
-from .base import _normalize_classification
 from .context import _AsyncPolicyContext
-from .policy_helpers import _build_policy_outcome, _emit_breaker_event
+from .execution import (
+    ExecutionContext,
+    build_aborted_outcome,
+    build_circuit_open_outcome,
+    build_exception_outcome_no_retry,
+    build_success_outcome_no_retry,
+    check_abort_no_retry,
+    check_breaker,
+    classify_for_breaker,
+    make_attempt_context,
+    record_cancel,
+    record_failure,
+    record_success,
+)
 from .retry import AsyncRetry
 from .types import (
     AbortPredicate,
-    AttemptContext,
     AttemptDecision,
     AttemptHook,
     LogHook,
@@ -56,59 +70,18 @@ class AsyncPolicy:
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> T:
-        breaker = self.circuit_breaker
-        start = time.monotonic()
-        if self.retry is None and abort_if is not None and abort_if():
-            if breaker is not None:
-                breaker.record_cancel()
+        ctx = ExecutionContext.create(self.circuit_breaker, on_metric, on_log, operation)
+
+        # Pre-flight abort check (no retry configured)
+        if self.retry is None and check_abort_no_retry(ctx, abort_if):
             raise AbortRetryError()
-        if breaker is not None:
-            decision = breaker.allow()
-            if decision.event is not None:
-                _emit_breaker_event(
-                    event=decision.event,
-                    state=decision.state,
-                    klass=None,
-                    on_metric=on_metric,
-                    on_log=on_log,
-                    operation=operation,
-                )
-            if not decision.allowed:
-                raise CircuitOpenError(decision.state.value)
+
+        # Circuit breaker check
+        check_breaker(ctx)
 
         try:
             if self.retry is None:
-                if on_attempt_start is not None:
-                    on_attempt_start(
-                        AttemptContext(
-                            attempt=1,
-                            operation=operation,
-                            elapsed_s=time.monotonic() - start,
-                            classification=None,
-                            exception=None,
-                            result=None,
-                            decision=None,
-                            stop_reason=None,
-                            cause=None,
-                            sleep_s=None,
-                        )
-                    )
-                result = await func()
-                if on_attempt_end is not None:
-                    on_attempt_end(
-                        AttemptContext(
-                            attempt=1,
-                            operation=operation,
-                            elapsed_s=time.monotonic() - start,
-                            classification=None,
-                            exception=None,
-                            result=result,
-                            decision=AttemptDecision.SUCCESS,
-                            stop_reason=None,
-                            cause=None,
-                            sleep_s=None,
-                        )
-                    )
+                result = await self._call_without_retry(ctx, func, on_attempt_start, on_attempt_end)
             else:
                 result = await self.retry.call(
                     func,
@@ -120,93 +93,104 @@ class AsyncPolicy:
                     on_attempt_start=on_attempt_start,
                     on_attempt_end=on_attempt_end,
                 )
-            if breaker is not None:
-                event = breaker.record_success()
-                if event is not None:
-                    _emit_breaker_event(
-                        event=event,
-                        state=breaker.state,
-                        klass=None,
-                        on_metric=on_metric,
-                        on_log=on_log,
-                        operation=operation,
-                    )
+            record_success(ctx)
             return result
+
         except asyncio.CancelledError:
-            if breaker is not None:
-                breaker.record_cancel()
+            record_cancel(ctx)
             raise
         except (KeyboardInterrupt, SystemExit):
-            if breaker is not None:
-                breaker.record_cancel()
+            record_cancel(ctx)
             raise
         except AbortRetryError as exc:
-            if self.retry is None and on_attempt_end is not None:
-                on_attempt_end(
-                    AttemptContext(
-                        attempt=1,
-                        operation=operation,
-                        elapsed_s=time.monotonic() - start,
-                        classification=None,
-                        exception=exc,
-                        result=None,
-                        decision=AttemptDecision.ABORTED,
-                        stop_reason=StopReason.ABORTED,
-                        cause=None,
-                        sleep_s=None,
-                    )
-                )
-            if breaker is not None:
-                breaker.record_cancel()
+            self._handle_abort_call(ctx, exc, on_attempt_end)
             raise
         except RetryExhaustedError as exc:
-            if breaker is not None:
-                klass = exc.last_class or ErrorClass.UNKNOWN
-                event = breaker.record_failure(klass)
-                if event is not None:
-                    _emit_breaker_event(
-                        event=event,
-                        state=breaker.state,
-                        klass=klass,
-                        on_metric=on_metric,
-                        on_log=on_log,
-                        operation=operation,
-                    )
+            self._handle_exhausted_call(ctx, exc)
             raise
         except Exception as exc:
-            if isinstance(exc, CircuitOpenError):
-                raise
-            if self.retry is None and on_attempt_end is not None:
-                on_attempt_end(
-                    AttemptContext(
-                        attempt=1,
-                        operation=operation,
-                        elapsed_s=time.monotonic() - start,
-                        classification=None,
-                        exception=exc,
-                        result=None,
-                        decision=AttemptDecision.RAISE,
-                        stop_reason=None,
-                        cause="exception",
-                        sleep_s=None,
-                    )
-                )
-            if breaker is not None:
-                if self.retry is not None:
-                    klass = _normalize_classification(self.retry.classifier(exc)).klass
-                else:
-                    klass = default_classifier(exc)
-                event = breaker.record_failure(klass)
-                if event is not None:
-                    _emit_breaker_event(
-                        event=event,
-                        state=breaker.state,
-                        klass=klass,
-                        on_metric=on_metric,
-                        on_log=on_log,
-                        operation=operation,
-                    )
+            self._handle_exception_call(ctx, exc, on_attempt_end)
             raise
+
+    async def _call_without_retry(
+        self,
+        ctx: ExecutionContext,
+        func: Callable[[], Awaitable[T]],
+        on_start: AttemptHook | None,
+        on_end: AttemptHook | None,
+    ) -> T:
+        """Execute async func without retry wrapper."""
+        if on_start is not None:
+            on_start(make_attempt_context(1, ctx.operation, ctx.elapsed()))
+
+        result = await func()
+
+        if on_end is not None:
+            on_end(
+                make_attempt_context(
+                    1,
+                    ctx.operation,
+                    ctx.elapsed(),
+                    result=result,
+                    decision=AttemptDecision.SUCCESS,
+                )
+            )
+
+        return result
+
+    def _handle_abort_call(
+        self,
+        ctx: ExecutionContext,
+        exc: AbortRetryError,
+        on_end: AttemptHook | None,
+    ) -> None:
+        """Handle AbortRetryError in call mode."""
+        if self.retry is None and on_end is not None:
+            on_end(
+                make_attempt_context(
+                    1,
+                    ctx.operation,
+                    ctx.elapsed(),
+                    exception=exc,
+                    decision=AttemptDecision.ABORTED,
+                    stop_reason=StopReason.ABORTED,
+                )
+            )
+        record_cancel(ctx)
+
+    def _handle_exhausted_call(
+        self,
+        ctx: ExecutionContext,
+        exc: RetryExhaustedError,
+    ) -> None:
+        """Handle RetryExhaustedError in call mode."""
+        klass = exc.last_class or ErrorClass.UNKNOWN
+        record_failure(ctx, klass)
+
+    def _handle_exception_call(
+        self,
+        ctx: ExecutionContext,
+        exc: Exception,
+        on_end: AttemptHook | None,
+    ) -> None:
+        """Handle general exception in call mode."""
+        if isinstance(exc, CircuitOpenError):
+            return
+
+        if self.retry is None and on_end is not None:
+            on_end(
+                make_attempt_context(
+                    1,
+                    ctx.operation,
+                    ctx.elapsed(),
+                    exception=exc,
+                    decision=AttemptDecision.RAISE,
+                    cause="exception",
+                )
+            )
+
+        klass = classify_for_breaker(exc, self.retry)
+        record_failure(ctx, klass)
 
     async def execute(
         self,
@@ -221,196 +205,54 @@ class AsyncPolicy:
         on_attempt_end: AttemptHook | None = None,
         capture_timeline: bool | RetryTimeline | None = None,
     ) -> RetryOutcome[T]:
-        start = time.monotonic()
-        breaker = self.circuit_breaker
-        if self.retry is None and abort_if is not None and abort_if():
-            if breaker is not None:
-                breaker.record_cancel()
-            return cast(
-                RetryOutcome[T],
-                _build_policy_outcome(
-                    ok=False,
-                    value=None,
-                    stop_reason=StopReason.ABORTED,
-                    attempts=0,
-                    last_class=None,
-                    last_exception=None,
-                    last_result=None,
-                    cause=None,
-                    elapsed_s=time.monotonic() - start,
-                ),
-            )
+        ctx = ExecutionContext.create(self.circuit_breaker, on_metric, on_log, operation)
 
-        if breaker is not None:
-            decision = breaker.allow()
-            if decision.event is not None:
-                _emit_breaker_event(
-                    event=decision.event,
-                    state=decision.state,
-                    klass=None,
-                    on_metric=on_metric,
-                    on_log=on_log,
-                    operation=operation,
-                )
+        # Pre-flight abort check (no retry configured)
+        if self.retry is None and check_abort_no_retry(ctx, abort_if):
+            return build_aborted_outcome(ctx)
+
+        # Circuit breaker check
+        if ctx.breaker is not None:
+            decision = ctx.breaker.allow()
+            ctx.emit_breaker_event(decision.event, decision.state)
             if not decision.allowed:
-                return cast(
-                    RetryOutcome[T],
-                    _build_policy_outcome(
-                        ok=False,
-                        value=None,
-                        stop_reason=None,
-                        attempts=0,
-                        last_class=None,
-                        last_exception=CircuitOpenError(decision.state.value),
-                        last_result=None,
-                        cause=None,
-                        elapsed_s=time.monotonic() - start,
-                    ),
-                )
+                return build_circuit_open_outcome(ctx, decision.state.value)
 
-        if self.retry is None:
-            try:
-                if on_attempt_start is not None:
-                    on_attempt_start(
-                        AttemptContext(
-                            attempt=1,
-                            operation=operation,
-                            elapsed_s=time.monotonic() - start,
-                            classification=None,
-                            exception=None,
-                            result=None,
-                            decision=None,
-                            stop_reason=None,
-                            cause=None,
-                            sleep_s=None,
-                        )
-                    )
-                result = await func()
-            except AbortRetryError as exc:
-                if breaker is not None:
-                    breaker.record_cancel()
-                if on_attempt_end is not None:
-                    on_attempt_end(
-                        AttemptContext(
-                            attempt=1,
-                            operation=operation,
-                            elapsed_s=time.monotonic() - start,
-                            classification=None,
-                            exception=exc,
-                            result=None,
-                            decision=AttemptDecision.ABORTED,
-                            stop_reason=StopReason.ABORTED,
-                            cause=None,
-                            sleep_s=None,
-                        )
-                    )
-                return cast(
-                    RetryOutcome[T],
-                    _build_policy_outcome(
-                        ok=False,
-                        value=None,
-                        stop_reason=StopReason.ABORTED,
-                        attempts=0,
-                        last_class=None,
-                        last_exception=None,
-                        last_result=None,
-                        cause=None,
-                        elapsed_s=time.monotonic() - start,
-                    ),
-                )
-            except asyncio.CancelledError:
-                if breaker is not None:
-                    breaker.record_cancel()
-                raise
-            except (KeyboardInterrupt, SystemExit):
-                if breaker is not None:
-                    breaker.record_cancel()
-                raise
-            except Exception as exc:
-                klass = default_classifier(exc)
-                if breaker is not None:
-                    event = breaker.record_failure(klass)
-                    if event is not None:
-                        _emit_breaker_event(
-                            event=event,
-                            state=breaker.state,
-                            klass=klass,
-                            on_metric=on_metric,
-                            on_log=on_log,
-                            operation=operation,
-                        )
-                if on_attempt_end is not None:
-                    on_attempt_end(
-                        AttemptContext(
-                            attempt=1,
-                            operation=operation,
-                            elapsed_s=time.monotonic() - start,
-                            classification=None,
-                            exception=exc,
-                            result=None,
-                            decision=AttemptDecision.RAISE,
-                            stop_reason=None,
-                            cause="exception",
-                            sleep_s=None,
-                        )
-                    )
-                return cast(
-                    RetryOutcome[T],
-                    _build_policy_outcome(
-                        ok=False,
-                        value=None,
-                        stop_reason=None,
-                        attempts=1,
-                        last_class=klass,
-                        last_exception=exc,
-                        last_result=None,
-                        cause="exception",
-                        elapsed_s=time.monotonic() - start,
-                    ),
-                )
-
-            if breaker is not None:
-                event = breaker.record_success()
-                if event is not None:
-                    _emit_breaker_event(
-                        event=event,
-                        state=breaker.state,
-                        klass=None,
-                        on_metric=on_metric,
-                        on_log=on_log,
-                        operation=operation,
-                    )
-            if on_attempt_end is not None:
-                on_attempt_end(
-                    AttemptContext(
-                        attempt=1,
-                        operation=operation,
-                        elapsed_s=time.monotonic() - start,
-                        classification=None,
-                        exception=None,
-                        result=result,
-                        decision=AttemptDecision.SUCCESS,
-                        stop_reason=None,
-                        cause=None,
-                        sleep_s=None,
-                    )
-                )
-            return cast(
-                RetryOutcome[T],
-                _build_policy_outcome(
-                    ok=True,
-                    value=result,
-                    stop_reason=None,
-                    attempts=1,
-                    last_class=None,
-                    last_exception=None,
-                    last_result=None,
-                    cause=None,
-                    elapsed_s=time.monotonic() - start,
-                ),
+        # Delegate to retry if configured
+        if self.retry is not None:
+            return await self._execute_with_retry(
+                ctx,
+                func,
+                on_metric,
+                on_log,
+                operation,
+                abort_if,
+                sleep,
+                on_attempt_start,
+                on_attempt_end,
+                capture_timeline,
             )
 
-        outcome = await self.retry.execute(
+        # No retry - single attempt
+        return await self._execute_without_retry(ctx, func, on_attempt_start, on_attempt_end)
+
+    async def _execute_with_retry(
+        self,
+        ctx: ExecutionContext,
+        func: Callable[[], Awaitable[T]],
+        on_metric: MetricHook | None,
+        on_log: LogHook | None,
+        operation: str | None,
+        abort_if: AbortPredicate | None,
+        sleep: SleepFn | None,
+        on_attempt_start: AttemptHook | None,
+        on_attempt_end: AttemptHook | None,
+        capture_timeline: bool | RetryTimeline | None,
+    ) -> RetryOutcome[T]:
+        """Execute with retry and record result with breaker."""
+        retry = self.retry
+        assert retry is not None
+        outcome = await retry.execute(
             func,
             on_metric=on_metric,
             on_log=on_log,
@@ -422,34 +264,84 @@ class AsyncPolicy:
             capture_timeline=capture_timeline,
         )
 
-        if breaker is not None:
+        # Record with circuit breaker
+        if ctx.breaker is not None:
             if outcome.ok:
-                event = breaker.record_success()
-                if event is not None:
-                    _emit_breaker_event(
-                        event=event,
-                        state=breaker.state,
-                        klass=None,
-                        on_metric=on_metric,
-                        on_log=on_log,
-                        operation=operation,
-                    )
+                record_success(ctx)
             elif outcome.stop_reason == StopReason.ABORTED:
-                breaker.record_cancel()
+                record_cancel(ctx)
             else:
                 klass = outcome.last_class or ErrorClass.UNKNOWN
-                event = breaker.record_failure(klass)
-                if event is not None:
-                    _emit_breaker_event(
-                        event=event,
-                        state=breaker.state,
-                        klass=klass,
-                        on_metric=on_metric,
-                        on_log=on_log,
-                        operation=operation,
-                    )
+                record_failure(ctx, klass)
 
         return outcome
+
+    async def _execute_without_retry(
+        self,
+        ctx: ExecutionContext,
+        func: Callable[[], Awaitable[T]],
+        on_start: AttemptHook | None,
+        on_end: AttemptHook | None,
+    ) -> RetryOutcome[T]:
+        """Execute single async attempt without retry."""
+        try:
+            if on_start is not None:
+                on_start(make_attempt_context(1, ctx.operation, ctx.elapsed()))
+
+            result = await func()
+
+        except AbortRetryError as exc:
+            record_cancel(ctx)
+            if on_end is not None:
+                on_end(
+                    make_attempt_context(
+                        1,
+                        ctx.operation,
+                        ctx.elapsed(),
+                        exception=exc,
+                        decision=AttemptDecision.ABORTED,
+                        stop_reason=StopReason.ABORTED,
+                    )
+                )
+            return build_aborted_outcome(ctx)
+
+        except asyncio.CancelledError:
+            record_cancel(ctx)
+            raise
+
+        except (KeyboardInterrupt, SystemExit):
+            record_cancel(ctx)
+            raise
+
+        except Exception as exc:
+            klass = classify_for_breaker(exc, None)
+            record_failure(ctx, klass)
+            if on_end is not None:
+                on_end(
+                    make_attempt_context(
+                        1,
+                        ctx.operation,
+                        ctx.elapsed(),
+                        exception=exc,
+                        decision=AttemptDecision.RAISE,
+                        cause="exception",
+                    )
+                )
+            return build_exception_outcome_no_retry(ctx, exc, klass)
+
+        # Success
+        record_success(ctx)
+        if on_end is not None:
+            on_end(
+                make_attempt_context(
+                    1,
+                    ctx.operation,
+                    ctx.elapsed(),
+                    result=result,
+                    decision=AttemptDecision.SUCCESS,
+                )
+            )
+        return build_success_outcome_no_retry(ctx, result)
 
     def context(
         self,
