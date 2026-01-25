@@ -29,6 +29,7 @@ class StopReason(str, Enum):
     MAX_UNKNOWN_ATTEMPTS = "MAX_UNKNOWN_ATTEMPTS"
     NON_RETRYABLE_CLASS = "NON_RETRYABLE_CLASS"
     NO_STRATEGY = "NO_STRATEGY"
+    SCHEDULED = "SCHEDULED"
     ABORTED = "ABORTED"
 
 
@@ -39,6 +40,7 @@ class RetryExhaustedError(Exception):
     last_class: ErrorClass | None
     last_exception: BaseException | None
     last_result: Any | None
+    next_sleep_s: float | None = None
 
     def __str__(self) -> str:
         return f"Retry stopped: {self.stop_reason.value}"

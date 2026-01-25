@@ -17,6 +17,7 @@ from .types import AbortPredicate, FailureCause, LogHook, MetricHook
 class _RetryDecision:
     action: Literal["retry", "raise"]
     sleep_s: float = 0.0
+    context: BackoffContext | None = None
 
 
 def _build_backoff_context(
@@ -61,6 +62,7 @@ class _RetryState:
         self.last_exc: BaseException | None = None
         self.last_result: Any | None = None
         self.last_class: ErrorClass | None = None
+        self.last_classification: Classification | None = None
         self.last_cause: FailureCause | None = None
         self.last_stop_reason: StopReason | None = None
         self.unknown_attempts: int = 0
@@ -140,6 +142,7 @@ class _RetryState:
         result: Any | None,
     ) -> None:
         self.last_class = classification.klass
+        self.last_classification = classification
         self.last_cause = cause
         if cause == "exception":
             self.last_exc = exc
@@ -307,4 +310,4 @@ class _RetryState:
             cause=cause,
             classification=classification,
         )
-        return _RetryDecision("retry", sleep_s)
+        return _RetryDecision("retry", sleep_s, ctx)

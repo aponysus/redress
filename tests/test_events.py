@@ -9,6 +9,7 @@ def test_event_name_values_are_stable() -> None:
     assert EventName.MAX_ATTEMPTS_EXCEEDED.value == "max_attempts_exceeded"
     assert EventName.MAX_UNKNOWN_ATTEMPTS_EXCEEDED.value == "max_unknown_attempts_exceeded"
     assert EventName.NO_STRATEGY_CONFIGURED.value == "no_strategy_configured"
+    assert EventName.SCHEDULED.value == "scheduled"
     assert EventName.ABORTED.value == "aborted"
     assert EventName.CIRCUIT_OPENED.value == "circuit_opened"
     assert EventName.CIRCUIT_HALF_OPEN.value == "circuit_half_open"

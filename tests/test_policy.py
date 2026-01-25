@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from redress import SleepDecision
 from redress.circuit import CircuitBreaker, CircuitState
 from redress.classify import Classification, default_classifier
 from redress.config import RetryConfig
@@ -20,10 +21,10 @@ from redress.errors import (
     StopReason,
 )
 from redress.events import EventName
-from redress.policy import MetricHook, Policy, Retry, RetryPolicy
+from redress.policy import AttemptDecision, MetricHook, Policy, Retry, RetryPolicy
 from redress.strategies import BackoffContext, decorrelated_jitter
 
-_retry_mod = importlib.import_module("redress.policy.retry")
+_retry_mod = importlib.import_module("redress.policy.retry_helpers")
 _state_mod = importlib.import_module("redress.policy.state")
 
 
@@ -119,6 +120,76 @@ def test_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     # Only one attempt
     assert call_count["n"] == 1
+
+
+def test_attempt_hooks_retry_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[tuple[str, Any]] = []
+    attempt_count = {"n": 0}
+
+    def on_start(ctx: Any) -> None:
+        calls.append(("start", ctx))
+
+    def on_end(ctx: Any) -> None:
+        calls.append(("end", ctx))
+
+    def func() -> str:
+        attempt_count["n"] += 1
+        if attempt_count["n"] == 1:
+            raise RuntimeError("boom")
+        return "ok"
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=lambda exc: ErrorClass.TRANSIENT,
+        strategy=_no_sleep_strategy,
+        max_attempts=3,
+    )
+
+    result = policy.call(func, on_attempt_start=on_start, on_attempt_end=on_end)
+    assert result == "ok"
+    assert [entry[0] for entry in calls] == ["start", "end", "start", "end"]
+
+    start1 = calls[0][1]
+    end1 = calls[1][1]
+    end2 = calls[3][1]
+
+    assert start1.attempt == 1
+    assert start1.decision is None
+    assert start1.classification is None
+
+    assert end1.decision is AttemptDecision.RETRY
+    assert end1.classification is not None
+    assert end1.classification.klass is ErrorClass.TRANSIENT
+    assert end1.cause == "exception"
+    assert end1.sleep_s == 0.0
+
+    assert end2.attempt == 2
+    assert end2.decision is AttemptDecision.SUCCESS
+    assert end2.result == "ok"
+    assert end2.classification is None
+
+
+def test_policy_attempt_hooks_without_retry() -> None:
+    calls: list[tuple[str, Any]] = []
+
+    def on_start(ctx: Any) -> None:
+        calls.append(("start", ctx))
+
+    def on_end(ctx: Any) -> None:
+        calls.append(("end", ctx))
+
+    policy = Policy(retry=None)
+    result = policy.call(lambda: "ok", on_attempt_start=on_start, on_attempt_end=on_end)
+    assert result == "ok"
+    assert [entry[0] for entry in calls] == ["start", "end"]
+
+    start_ctx = calls[0][1]
+    end_ctx = calls[1][1]
+    assert start_ctx.attempt == 1
+    assert start_ctx.decision is None
+    assert end_ctx.decision is AttemptDecision.SUCCESS
+    assert end_ctx.result == "ok"
 
 
 def test_policy_abort_if_stops_before_attempt() -> None:
@@ -351,6 +422,171 @@ def test_policy_execute_stop_reason_aborted() -> None:
     assert outcome.ok is False
     assert outcome.stop_reason == StopReason.ABORTED
     assert outcome.attempts == 0
+
+
+def test_policy_execute_abort_error_sets_stop_reason() -> None:
+    def func() -> None:
+        raise AbortRetryError()
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.ABORTED
+
+
+def test_policy_sleep_handler_defers_execute(monkeypatch: pytest.MonkeyPatch) -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    sleep_calls: list[float] = []
+    contexts: list[BackoffContext] = []
+
+    def sleep_fn(ctx: BackoffContext, sleep_s: float) -> SleepDecision:
+        contexts.append(ctx)
+        sleep_calls.append(sleep_s)
+        return SleepDecision.DEFER
+
+    def fail_sleep(_: float) -> None:
+        raise AssertionError("sleep should not be called for DEFER")
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", fail_sleep)
+    metric_hook, events = _collect_metrics()
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=lambda ctx: 1.5,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func, on_metric=metric_hook, sleep=sleep_fn)
+    assert outcome.ok is False
+    assert outcome.stop_reason == StopReason.SCHEDULED
+    assert outcome.next_sleep_s == 1.5
+    assert sleep_calls == [1.5]
+    assert contexts[0].classification.klass is ErrorClass.TRANSIENT
+
+    scheduled = next(event for event in events if event[0] == EventName.SCHEDULED.value)
+    assert scheduled[3]["stop_reason"] == StopReason.SCHEDULED.value
+
+
+def test_policy_sleep_handler_defers_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def sleep_fn(ctx: BackoffContext, sleep_s: float) -> SleepDecision:
+        assert ctx.classification.klass is ErrorClass.TRANSIENT
+        assert sleep_s == 2.0
+        return SleepDecision.DEFER
+
+    def fail_sleep(_: float) -> None:
+        raise AssertionError("sleep should not be called for DEFER")
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", fail_sleep)
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=lambda ctx: 2.0,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(RetryExhaustedError) as excinfo:
+        policy.call(func, sleep=sleep_fn)
+
+    err = excinfo.value
+    assert err.stop_reason is StopReason.SCHEDULED
+    assert err.next_sleep_s == 2.0
+    assert isinstance(err.last_exception, RuntimeError)
+
+
+def test_policy_sleep_handler_aborts_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def sleep_fn(_: BackoffContext, __: float) -> SleepDecision:
+        return SleepDecision.ABORT
+
+    def fail_sleep(_: float) -> None:
+        raise AssertionError("sleep should not be called for ABORT")
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", fail_sleep)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=lambda ctx: 1.0,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    with pytest.raises(AbortRetryError):
+        policy.call(func, sleep=sleep_fn)
+
+
+def test_policy_sleep_handler_sleeps_and_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+    sleeps: list[float] = []
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return "ok"
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def sleep_fn(_: BackoffContext, sleep_s: float) -> SleepDecision:
+        return SleepDecision.SLEEP
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: sleeps.append(s))
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=lambda ctx: 0.2,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    result = policy.call(func, sleep=sleep_fn)
+    assert result == "ok"
+    assert sleeps == [0.2]
+
+
+def test_sleep_handler_missing_context_raises() -> None:
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        max_attempts=1,
+    )
+    state = _state_mod._RetryState(
+        policy=policy.retry,
+        on_metric=None,
+        on_log=None,
+        operation=None,
+        abort_if=None,
+    )
+    decision = _state_mod._RetryDecision(action="retry", sleep_s=0.1, context=None)
+
+    with pytest.raises(RuntimeError, match="Missing BackoffContext"):
+        _retry_mod._sync_sleep_action(
+            state=state,
+            attempt=1,
+            decision=decision,
+            sleep_fn=lambda ctx, sleep_s: SleepDecision.SLEEP,
+        )
 
 
 def test_policy_execute_result_failure() -> None:

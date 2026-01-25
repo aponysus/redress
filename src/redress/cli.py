@@ -1,12 +1,13 @@
 import argparse
 import importlib
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from .config import RetryConfig
 from .errors import ErrorClass
 from .policy import AsyncPolicy, AsyncRetry, AsyncRetryPolicy, Policy, Retry, RetryPolicy
+from .sleep import SleepFn
 from .strategies import StrategyFn
 
 
@@ -20,6 +21,7 @@ class _ConfigView:
     default_strategy: StrategyFn | None
     class_strategies: Mapping[Any, StrategyFn] | None
     result_classifier: object | None
+    sleep: SleepFn | None
 
 
 def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
@@ -33,6 +35,7 @@ def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
             default_strategy=obj.default_strategy,
             class_strategies=obj.class_strategies,
             result_classifier=obj.result_classifier,
+            sleep=obj.sleep,
         )
 
     if isinstance(obj, Policy | AsyncPolicy):
@@ -51,6 +54,7 @@ def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
             default_strategy=obj._default_strategy,
             class_strategies=obj._strategies,
             result_classifier=obj.result_classifier,
+            sleep=obj.sleep,
         )
 
     raise TypeError(
@@ -99,6 +103,8 @@ def _lint_config_view(cfg: _ConfigView) -> tuple[list[str], list[str]]:
 
     if cfg.result_classifier is not None and not callable(cfg.result_classifier):
         errors.append(f"[{cfg.source}] result_classifier must be callable.")
+    if cfg.sleep is not None and not callable(cfg.sleep):
+        errors.append(f"[{cfg.source}] sleep handler must be callable.")
 
     if cfg.per_class_max_attempts:
         for klass, limit in cfg.per_class_max_attempts.items():
@@ -124,7 +130,7 @@ def _lint_config_view(cfg: _ConfigView) -> tuple[list[str], list[str]]:
     return errors, warnings
 
 
-def _format_strategy(strategy: StrategyFn | None) -> str:
+def _format_strategy(strategy: Callable[..., object] | None) -> str:
     if strategy is None:
         return "None"
     name = getattr(strategy, "__qualname__", None) or getattr(strategy, "__name__", None)
@@ -147,6 +153,7 @@ def _print_snapshot(view: _ConfigView) -> None:
     print(f"  max_attempts: {view.max_attempts}")
     print(f"  max_unknown_attempts: {view.max_unknown_attempts}")
     print(f"  default_strategy: {_format_strategy(view.default_strategy)}")
+    print(f"  sleep: {_format_strategy(view.sleep)}")
 
     print("  class_strategies:")
     if view.class_strategies:

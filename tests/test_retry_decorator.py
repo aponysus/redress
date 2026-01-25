@@ -9,7 +9,7 @@ import pytest
 from redress import retry
 from redress.errors import ErrorClass, RateLimitError
 
-_retry_mod = importlib.import_module("redress.policy.retry")
+_retry_mod = importlib.import_module("redress.policy.retry_helpers")
 
 
 def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:

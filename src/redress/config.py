@@ -4,6 +4,7 @@ from typing import Any
 
 from .classify import Classification
 from .errors import ErrorClass
+from .sleep import SleepFn
 from .strategies import StrategyFn
 
 ResultClassifierFn = Callable[[Any], ErrorClass | Classification | None]
@@ -19,6 +20,7 @@ class RetryConfig:
     default_strategy: StrategyFn | None = None
     class_strategies: Mapping[ErrorClass, StrategyFn] | None = None
     result_classifier: ResultClassifierFn | None = None
+    sleep: SleepFn | None = None
 
     def per_class_limits(self) -> dict[ErrorClass, int]:
         """

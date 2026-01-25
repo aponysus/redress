@@ -44,6 +44,7 @@ _TERMINAL_EVENTS = {
     EventName.MAX_ATTEMPTS_EXCEEDED.value,
     EventName.MAX_UNKNOWN_ATTEMPTS_EXCEEDED.value,
     EventName.NO_STRATEGY_CONFIGURED.value,
+    EventName.SCHEDULED.value,
     EventName.ABORTED.value,
 }
 

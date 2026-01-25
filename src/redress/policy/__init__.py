@@ -1,8 +1,12 @@
+from ..sleep import SleepDecision, SleepFn
 from .container import AsyncPolicy, Policy
 from .decorator import retry
 from .retry import AsyncRetry, Retry
 from .types import (
     AbortPredicate,
+    AttemptContext,
+    AttemptDecision,
+    AttemptHook,
     ClassifierFn,
     FailureCause,
     LogHook,
@@ -25,8 +29,13 @@ __all__ = [
     "FailureCause",
     "MetricHook",
     "LogHook",
+    "AttemptHook",
+    "AttemptContext",
+    "AttemptDecision",
     "AbortPredicate",
     "RetryOutcome",
+    "SleepDecision",
+    "SleepFn",
     "P",
     "T",
 ]

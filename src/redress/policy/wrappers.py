@@ -3,10 +3,11 @@ from typing import Any
 
 from ..config import ResultClassifierFn, RetryConfig
 from ..errors import ErrorClass
+from ..sleep import SleepFn
 from ..strategies import StrategyFn
 from .container import AsyncPolicy, Policy
 from .retry import AsyncRetry, Retry
-from .types import AbortPredicate, ClassifierFn, LogHook, MetricHook, RetryOutcome, T
+from .types import AbortPredicate, AttemptHook, ClassifierFn, LogHook, MetricHook, RetryOutcome, T
 
 
 class RetryPolicy:
@@ -21,6 +22,7 @@ class RetryPolicy:
         result_classifier: ResultClassifierFn | None = None,
         strategy: StrategyFn | None = None,
         strategies: Mapping[ErrorClass, StrategyFn] | None = None,
+        sleep: SleepFn | None = None,
         deadline_s: float = 60.0,
         max_attempts: int = 6,
         max_unknown_attempts: int | None = 2,
@@ -32,6 +34,7 @@ class RetryPolicy:
                 result_classifier=result_classifier,
                 strategy=strategy,
                 strategies=strategies,
+                sleep=sleep,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -54,6 +57,7 @@ class RetryPolicy:
             result_classifier=config.result_classifier,
             strategy=config.default_strategy,
             strategies=config.class_strategies,
+            sleep=config.sleep,
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,
@@ -79,6 +83,9 @@ class RetryPolicy:
         on_log: LogHook | None = None,
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
+        sleep: SleepFn | None = None,
+        on_attempt_start: AttemptHook | None = None,
+        on_attempt_end: AttemptHook | None = None,
     ) -> Any:
         return self._policy.call(
             func,
@@ -86,6 +93,9 @@ class RetryPolicy:
             on_log=on_log,
             operation=operation,
             abort_if=abort_if,
+            sleep=sleep,
+            on_attempt_start=on_attempt_start,
+            on_attempt_end=on_attempt_end,
         )
 
     def execute(
@@ -96,6 +106,9 @@ class RetryPolicy:
         on_log: LogHook | None = None,
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
+        sleep: SleepFn | None = None,
+        on_attempt_start: AttemptHook | None = None,
+        on_attempt_end: AttemptHook | None = None,
     ) -> RetryOutcome[Any]:
         return self._policy.execute(
             func,
@@ -103,6 +116,9 @@ class RetryPolicy:
             on_log=on_log,
             operation=operation,
             abort_if=abort_if,
+            sleep=sleep,
+            on_attempt_start=on_attempt_start,
+            on_attempt_end=on_attempt_end,
         )
 
     def context(
@@ -112,12 +128,18 @@ class RetryPolicy:
         on_log: LogHook | None = None,
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
+        sleep: SleepFn | None = None,
+        on_attempt_start: AttemptHook | None = None,
+        on_attempt_end: AttemptHook | None = None,
     ) -> Any:
         return self._policy.context(
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
             abort_if=abort_if,
+            sleep=sleep,
+            on_attempt_start=on_attempt_start,
+            on_attempt_end=on_attempt_end,
         )
 
     def __getattr__(self, name: str) -> Any:
@@ -148,6 +170,7 @@ class AsyncRetryPolicy:
         result_classifier: ResultClassifierFn | None = None,
         strategy: StrategyFn | None = None,
         strategies: Mapping[ErrorClass, StrategyFn] | None = None,
+        sleep: SleepFn | None = None,
         deadline_s: float = 60.0,
         max_attempts: int = 6,
         max_unknown_attempts: int | None = 2,
@@ -159,6 +182,7 @@ class AsyncRetryPolicy:
                 result_classifier=result_classifier,
                 strategy=strategy,
                 strategies=strategies,
+                sleep=sleep,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -181,6 +205,7 @@ class AsyncRetryPolicy:
             result_classifier=config.result_classifier,
             strategy=config.default_strategy,
             strategies=config.class_strategies,
+            sleep=config.sleep,
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,
@@ -206,6 +231,9 @@ class AsyncRetryPolicy:
         on_log: LogHook | None = None,
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
+        sleep: SleepFn | None = None,
+        on_attempt_start: AttemptHook | None = None,
+        on_attempt_end: AttemptHook | None = None,
     ) -> T:
         return await self._policy.call(
             func,
@@ -213,6 +241,9 @@ class AsyncRetryPolicy:
             on_log=on_log,
             operation=operation,
             abort_if=abort_if,
+            sleep=sleep,
+            on_attempt_start=on_attempt_start,
+            on_attempt_end=on_attempt_end,
         )
 
     async def execute(
@@ -223,6 +254,9 @@ class AsyncRetryPolicy:
         on_log: LogHook | None = None,
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
+        sleep: SleepFn | None = None,
+        on_attempt_start: AttemptHook | None = None,
+        on_attempt_end: AttemptHook | None = None,
     ) -> RetryOutcome[T]:
         return await self._policy.execute(
             func,
@@ -230,6 +264,9 @@ class AsyncRetryPolicy:
             on_log=on_log,
             operation=operation,
             abort_if=abort_if,
+            sleep=sleep,
+            on_attempt_start=on_attempt_start,
+            on_attempt_end=on_attempt_end,
         )
 
     def context(
@@ -239,12 +276,18 @@ class AsyncRetryPolicy:
         on_log: LogHook | None = None,
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
+        sleep: SleepFn | None = None,
+        on_attempt_start: AttemptHook | None = None,
+        on_attempt_end: AttemptHook | None = None,
     ) -> Any:
         return self._policy.context(
             on_metric=on_metric,
             on_log=on_log,
             operation=operation,
             abort_if=abort_if,
+            sleep=sleep,
+            on_attempt_start=on_attempt_start,
+            on_attempt_end=on_attempt_end,
         )
 
     def __getattr__(self, name: str) -> Any:

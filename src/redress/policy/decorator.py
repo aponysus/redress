@@ -6,8 +6,9 @@ from typing import cast, overload
 from ..classify import default_classifier
 from ..config import ResultClassifierFn
 from ..errors import ErrorClass
+from ..sleep import SleepFn
 from ..strategies import StrategyFn, decorrelated_jitter
-from .types import AbortPredicate, ClassifierFn, LogHook, MetricHook, P, T
+from .types import AbortPredicate, AttemptHook, ClassifierFn, LogHook, MetricHook, P, T
 from .wrappers import AsyncRetryPolicy, RetryPolicy
 
 
@@ -19,6 +20,7 @@ def retry(
     result_classifier: ResultClassifierFn | None = ...,
     strategy: StrategyFn | None = ...,
     strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
+    sleep: SleepFn | None = ...,
     deadline_s: float = ...,
     max_attempts: int = ...,
     max_unknown_attempts: int | None = ...,
@@ -27,6 +29,8 @@ def retry(
     on_log: LogHook | None = ...,
     operation: str | None = ...,
     abort_if: AbortPredicate | None = ...,
+    on_attempt_start: AttemptHook | None = ...,
+    on_attempt_end: AttemptHook | None = ...,
 ) -> Callable[[Callable[P, T]], Callable[P, T]]: ...
 
 
@@ -38,6 +42,7 @@ def retry(
     result_classifier: ResultClassifierFn | None = ...,
     strategy: StrategyFn | None = ...,
     strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
+    sleep: SleepFn | None = ...,
     deadline_s: float = ...,
     max_attempts: int = ...,
     max_unknown_attempts: int | None = ...,
@@ -46,6 +51,8 @@ def retry(
     on_log: LogHook | None = ...,
     operation: str | None = ...,
     abort_if: AbortPredicate | None = ...,
+    on_attempt_start: AttemptHook | None = ...,
+    on_attempt_end: AttemptHook | None = ...,
 ) -> Callable[P, T]: ...
 
 
@@ -56,6 +63,7 @@ def retry(
     result_classifier: ResultClassifierFn | None = None,
     strategy: StrategyFn | None = None,
     strategies: Mapping[ErrorClass, StrategyFn] | None = None,
+    sleep: SleepFn | None = None,
     deadline_s: float = 60.0,
     max_attempts: int = 6,
     max_unknown_attempts: int | None = 2,
@@ -64,6 +72,8 @@ def retry(
     on_log: LogHook | None = None,
     operation: str | None = None,
     abort_if: AbortPredicate | None = None,
+    on_attempt_start: AttemptHook | None = None,
+    on_attempt_end: AttemptHook | None = None,
 ) -> Callable[[Callable[P, T]], Callable[P, T]] | Callable[P, T]:
     """
     Decorator that wraps a function in a RetryPolicy (sync) or AsyncRetryPolicy (async).
@@ -75,7 +85,7 @@ def retry(
             ...
 
     Parameters mirror RetryPolicy/AsyncRetryPolicy (including result_classifier).
-    Hooks/operation can be set up-front.
+    Hooks/operation can be set up-front (including on_attempt_start/on_attempt_end).
 
     If neither `strategy` nor `strategies` is provided, a default
     decorrelated_jitter(max_s=5.0) strategy is injected.
@@ -97,6 +107,7 @@ def retry(
                 result_classifier=result_classifier,
                 strategy=effective_strategy,
                 strategies=strategies,
+                sleep=sleep,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -111,6 +122,8 @@ def retry(
                     on_log=on_log,
                     operation=op_name,
                     abort_if=abort_if,
+                    on_attempt_start=on_attempt_start,
+                    on_attempt_end=on_attempt_end,
                 )
                 return cast(T, result)
 
@@ -121,6 +134,7 @@ def retry(
             result_classifier=result_classifier,
             strategy=effective_strategy,
             strategies=strategies,
+            sleep=sleep,
             deadline_s=deadline_s,
             max_attempts=max_attempts,
             max_unknown_attempts=max_unknown_attempts,
@@ -135,6 +149,8 @@ def retry(
                 on_log=on_log,
                 operation=op_name,
                 abort_if=abort_if,
+                on_attempt_start=on_attempt_start,
+                on_attempt_end=on_attempt_end,
             )
             return cast(T, result)
 

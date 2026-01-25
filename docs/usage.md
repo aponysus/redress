@@ -71,6 +71,28 @@ Per-class limit semantics:
 - `1` = one retry (two total attempts for that class)
 - `2` = two retries (three total attempts for that class)
 
+## Pluggable sleep handler (defer instead of sleeping)
+
+Use a sleep handler to persist retry timing and exit the loop without blocking.
+
+```python
+from redress import RetryPolicy, SleepDecision, StopReason, default_classifier
+from redress.strategies import decorrelated_jitter
+
+def schedule(ctx, sleep_s: float) -> SleepDecision:
+    save_next_attempt(ctx.attempt, sleep_s, ctx.classification.klass)
+    return SleepDecision.DEFER
+
+policy = RetryPolicy(
+    classifier=default_classifier,
+    strategy=decorrelated_jitter(max_s=5.0),
+)
+
+outcome = policy.execute(do_work, sleep=schedule)
+if outcome.stop_reason is StopReason.SCHEDULED:
+    ...
+```
+
 ## Classification context & context-aware strategies
 
 Classifiers may return `Classification` to pass hints like Retry-After. The retry
@@ -194,6 +216,22 @@ policy.call(
     lambda: do_work(),
     on_metric=prometheus_metric_hook(counter),
     on_log=log_hook,
+    operation="sync_account",
+)
+```
+
+## Attempt lifecycle hooks
+
+```python
+from redress import AttemptDecision
+
+def on_attempt_end(ctx) -> None:
+    if ctx.decision is AttemptDecision.RETRY:
+        record_retry(ctx.attempt, ctx.classification.klass, ctx.sleep_s)
+
+policy.call(
+    lambda: do_work(),
+    on_attempt_end=on_attempt_end,
     operation="sync_account",
 )
 ```

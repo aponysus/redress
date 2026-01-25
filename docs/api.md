@@ -4,12 +4,12 @@
 
 - `Policy`, `AsyncPolicy`
   - Unified resilience containers; use `Policy(retry=Retry(...))`
-  - `.call(func, on_metric=None, on_log=None, operation=None, abort_if=None)`
-  - `.execute(func, on_metric=None, on_log=None, operation=None, abort_if=None)`
-  - `.context(on_metric=None, on_log=None, operation=None, abort_if=None)`
+  - `.call(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
+  - `.execute(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
+  - `.context(on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
 - `Retry`, `AsyncRetry`
   - Retry components with `result_classifier` support
-  - `.call(..., abort_if=None)`, `.execute(..., abort_if=None)`, `.context(..., abort_if=None)`
+  - `.call(..., abort_if=None, sleep=None)`, `.execute(..., abort_if=None, sleep=None)`, `.context(..., abort_if=None, sleep=None)`
   - `.from_config(config, classifier=...)`
 - `RetryPolicy`, `AsyncRetryPolicy`
   - Backward-compatible sugar for `Policy(retry=Retry(...))`
@@ -52,6 +52,7 @@
 ## Outcomes
 
 - `RetryOutcome[T]` from `execute()` with attempts, stop_reason, and last error info
+- `RetryOutcome.next_sleep_s` when retries are deferred via a sleep handler
 
 ## Metrics helpers
 
@@ -63,3 +64,7 @@
 
 - `EventName` enum (`redress.events.EventName`) for hook event constants
 - `StopReason` enum is re-exported from `redress.events`
+
+## Sleep handlers
+
+- `SleepDecision` enum (`sleep`, `defer`, `abort`)

@@ -18,6 +18,7 @@ Event names are exported as `redress.events.EventName` (values shown below).
 - `max_attempts_exceeded` – global or per-class cap reached
 - `max_unknown_attempts_exceeded` – UNKNOWN-specific cap reached
 - `no_strategy_configured` – missing strategy for a retryable class
+- `scheduled` – retry deferred by a sleep handler
 - `aborted` – retry aborted via abort_if or AbortRetryError
 - `circuit_opened` – circuit breaker transitions to open
 - `circuit_half_open` – circuit breaker transitions to half-open
@@ -39,6 +40,7 @@ Terminal events carry a stable `stop_reason` tag with a small, fixed set:
 - `MAX_UNKNOWN_ATTEMPTS`
 - `NON_RETRYABLE_CLASS`
 - `NO_STRATEGY`
+- `SCHEDULED`
 - `ABORTED`
 
 ## Tags

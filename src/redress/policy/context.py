@@ -2,11 +2,14 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from .types import AbortPredicate, LogHook, MetricHook, T
+from ..sleep import SleepFn
+from .types import AbortPredicate, AttemptHook, LogHook, MetricHook, T
 
 if TYPE_CHECKING:
-    from .container import AsyncPolicy, Policy
-    from .retry import AsyncRetry, Retry
+    from .async_policy import AsyncPolicy
+    from .policy import Policy
+    from .retry_async import AsyncRetry
+    from .retry_sync import Retry
 
 
 @dataclass
@@ -16,6 +19,9 @@ class _RetryContext:
     on_log: LogHook | None
     operation: str | None
     abort_if: AbortPredicate | None
+    sleep: SleepFn | None
+    on_attempt_start: AttemptHook | None
+    on_attempt_end: AttemptHook | None
 
     def __enter__(self) -> Callable[..., T]:
         return self.call
@@ -30,6 +36,9 @@ class _RetryContext:
             on_log=self.on_log,
             operation=self.operation,
             abort_if=self.abort_if,
+            sleep=self.sleep,
+            on_attempt_start=self.on_attempt_start,
+            on_attempt_end=self.on_attempt_end,
         )
         return cast(T, result)
 
@@ -41,6 +50,9 @@ class _AsyncRetryContext:
     on_log: LogHook | None
     operation: str | None
     abort_if: AbortPredicate | None
+    sleep: SleepFn | None
+    on_attempt_start: AttemptHook | None
+    on_attempt_end: AttemptHook | None
 
     async def __aenter__(self) -> Callable[..., Awaitable[T]]:
         return self.call
@@ -55,6 +67,9 @@ class _AsyncRetryContext:
             on_log=self.on_log,
             operation=self.operation,
             abort_if=self.abort_if,
+            sleep=self.sleep,
+            on_attempt_start=self.on_attempt_start,
+            on_attempt_end=self.on_attempt_end,
         )
         return result
 
@@ -66,6 +81,9 @@ class _PolicyContext:
     on_log: LogHook | None
     operation: str | None
     abort_if: AbortPredicate | None
+    sleep: SleepFn | None
+    on_attempt_start: AttemptHook | None
+    on_attempt_end: AttemptHook | None
 
     def __enter__(self) -> Callable[..., T]:
         return self.call
@@ -80,6 +98,9 @@ class _PolicyContext:
             on_log=self.on_log,
             operation=self.operation,
             abort_if=self.abort_if,
+            sleep=self.sleep,
+            on_attempt_start=self.on_attempt_start,
+            on_attempt_end=self.on_attempt_end,
         )
         return cast(T, result)
 
@@ -91,6 +112,9 @@ class _AsyncPolicyContext:
     on_log: LogHook | None
     operation: str | None
     abort_if: AbortPredicate | None
+    sleep: SleepFn | None
+    on_attempt_start: AttemptHook | None
+    on_attempt_end: AttemptHook | None
 
     async def __aenter__(self) -> Callable[..., Awaitable[T]]:
         return self.call
@@ -105,5 +129,8 @@ class _AsyncPolicyContext:
             on_log=self.on_log,
             operation=self.operation,
             abort_if=self.abort_if,
+            sleep=self.sleep,
+            on_attempt_start=self.on_attempt_start,
+            on_attempt_end=self.on_attempt_end,
         )
         return result
