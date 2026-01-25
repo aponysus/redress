@@ -7,7 +7,16 @@ from ..sleep import SleepFn
 from ..strategies import StrategyFn
 from .container import AsyncPolicy, Policy
 from .retry import AsyncRetry, Retry
-from .types import AbortPredicate, AttemptHook, ClassifierFn, LogHook, MetricHook, RetryOutcome, T
+from .types import (
+    AbortPredicate,
+    AttemptHook,
+    ClassifierFn,
+    LogHook,
+    MetricHook,
+    RetryOutcome,
+    RetryTimeline,
+    T,
+)
 
 
 class RetryPolicy:
@@ -109,6 +118,7 @@ class RetryPolicy:
         sleep: SleepFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
+        capture_timeline: bool | RetryTimeline | None = None,
     ) -> RetryOutcome[Any]:
         return self._policy.execute(
             func,
@@ -119,6 +129,7 @@ class RetryPolicy:
             sleep=sleep,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
+            capture_timeline=capture_timeline,
         )
 
     def context(
@@ -257,6 +268,7 @@ class AsyncRetryPolicy:
         sleep: SleepFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
+        capture_timeline: bool | RetryTimeline | None = None,
     ) -> RetryOutcome[T]:
         return await self._policy.execute(
             func,
@@ -267,6 +279,7 @@ class AsyncRetryPolicy:
             sleep=sleep,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
+            capture_timeline=capture_timeline,
         )
 
     def context(

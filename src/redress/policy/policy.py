@@ -24,6 +24,7 @@ from .types import (
     LogHook,
     MetricHook,
     RetryOutcome,
+    RetryTimeline,
 )
 
 
@@ -212,6 +213,7 @@ class Policy:
         sleep: SleepFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
+        capture_timeline: bool | RetryTimeline | None = None,
     ) -> RetryOutcome[Any]:
         start = time.monotonic()
         breaker = self.circuit_breaker
@@ -392,6 +394,7 @@ class Policy:
             sleep=sleep,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
+            capture_timeline=capture_timeline,
         )
 
         if breaker is not None:

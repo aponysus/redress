@@ -11,6 +11,7 @@ Release notes are maintained here.
 - Attempt lifecycle hooks (`on_attempt_start`, `on_attempt_end`, `AttemptContext`) and cooperative abort (`abort_if`, `AbortRetryError`).
 - Sleep handlers (`SleepDecision`, `SleepFn`) to defer retries and surface `next_sleep_s`.
 - `EventName` and `StopReason` enums for stable observability, plus `redress.contrib.otel` hooks.
+- Optional timeline capture on `execute()` via `RetryOutcome.timeline`.
 
 ### Changed
 - `per_class_max_attempts` now allows `0` to disable retries for a class.

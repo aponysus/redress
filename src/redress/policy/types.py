@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Generic, Literal, ParamSpec, TypeVar
 
@@ -39,6 +39,25 @@ class AttemptContext:
 
 
 @dataclass(frozen=True)
+class TimelineEvent:
+    attempt: int
+    event: str
+    elapsed_s: float
+    sleep_s: float
+    error_class: ErrorClass | None
+    stop_reason: StopReason | None
+    cause: FailureCause | None
+
+
+@dataclass
+class RetryTimeline:
+    events: list[TimelineEvent] = field(default_factory=list)
+
+    def add(self, event: TimelineEvent) -> None:
+        self.events.append(event)
+
+
+@dataclass(frozen=True)
 class RetryOutcome(Generic[T]):
     ok: bool
     value: T | None
@@ -50,3 +69,4 @@ class RetryOutcome(Generic[T]):
     cause: FailureCause | None
     elapsed_s: float
     next_sleep_s: float | None = None
+    timeline: RetryTimeline | None = None

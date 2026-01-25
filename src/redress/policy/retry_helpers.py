@@ -8,7 +8,14 @@ from ..errors import StopReason
 from ..events import EventName
 from ..sleep import SleepDecision, SleepFn
 from .state import _RetryDecision, _RetryState
-from .types import AttemptContext, AttemptDecision, AttemptHook, FailureCause, RetryOutcome
+from .types import (
+    AttemptContext,
+    AttemptDecision,
+    AttemptHook,
+    FailureCause,
+    RetryOutcome,
+    RetryTimeline,
+)
 
 
 @dataclass(frozen=True)
@@ -29,6 +36,7 @@ def _build_outcome(
     state: _RetryState,
     attempts: int,
     next_sleep_s: float | None = None,
+    timeline: RetryTimeline | None = None,
 ) -> RetryOutcome[Any]:
     last_exception: BaseException | None = None
     last_result: Any | None = None
@@ -48,10 +56,16 @@ def _build_outcome(
         cause=None if ok else state.last_cause,
         elapsed_s=state.elapsed().total_seconds(),
         next_sleep_s=next_sleep_s,
+        timeline=timeline,
     )
 
 
-def _abort_outcome(state: _RetryState, attempts: int) -> RetryOutcome[Any]:
+def _abort_outcome(
+    state: _RetryState,
+    attempts: int,
+    *,
+    timeline: RetryTimeline | None = None,
+) -> RetryOutcome[Any]:
     if state.last_stop_reason is not StopReason.ABORTED:
         state.last_stop_reason = StopReason.ABORTED
         state.emit(
@@ -60,7 +74,7 @@ def _abort_outcome(state: _RetryState, attempts: int) -> RetryOutcome[Any]:
             0.0,
             stop_reason=StopReason.ABORTED,
         )
-    return _build_outcome(ok=False, value=None, state=state, attempts=attempts)
+    return _build_outcome(ok=False, value=None, state=state, attempts=attempts, timeline=timeline)
 
 
 def _resolve_sleep(policy_sleep: SleepFn | None, call_sleep: SleepFn | None) -> SleepFn | None:

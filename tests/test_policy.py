@@ -21,7 +21,7 @@ from redress.errors import (
     StopReason,
 )
 from redress.events import EventName
-from redress.policy import AttemptDecision, MetricHook, Policy, Retry, RetryPolicy
+from redress.policy import AttemptDecision, MetricHook, Policy, Retry, RetryPolicy, RetryTimeline
 from redress.strategies import BackoffContext, decorrelated_jitter
 
 _retry_mod = importlib.import_module("redress.policy.retry_helpers")
@@ -283,6 +283,35 @@ def test_policy_execute_success_after_retries(monkeypatch: pytest.MonkeyPatch) -
     assert outcome.stop_reason is None
 
 
+def test_policy_execute_timeline_success_after_retries(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise RateLimitError("429")
+        return "ok"
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda _: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=5,
+    )
+
+    timeline = RetryTimeline()
+    outcome = policy.execute(func, capture_timeline=timeline)
+    assert outcome.ok is True
+    assert outcome.timeline is timeline
+    assert timeline.events[-1].event == EventName.SUCCESS.value
+    assert any(event.event == EventName.RETRY.value for event in timeline.events)
+    retry_event = next(event for event in timeline.events if event.event == EventName.RETRY.value)
+    assert retry_event.error_class == ErrorClass.RATE_LIMIT
+    assert retry_event.cause == "exception"
+
+
 def test_policy_execute_stop_reason_permanent() -> None:
     def func() -> None:
         raise PermanentError("stop")
@@ -438,6 +467,99 @@ def test_policy_execute_abort_error_sets_stop_reason() -> None:
     outcome = policy.execute(func)
     assert outcome.ok is False
     assert outcome.stop_reason == StopReason.ABORTED
+
+
+def test_policy_execute_timeline_stop_reason_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = _FakeTime(0.0)
+    monkeypatch.setattr(_state_mod.time, "monotonic", clock.monotonic)
+
+    def func() -> None:
+        clock.advance(2.0)
+        raise RateLimitError("429")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=1.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func, capture_timeline=True)
+    assert outcome.stop_reason == StopReason.DEADLINE_EXCEEDED
+    assert outcome.timeline is not None
+    assert any(
+        event.event == EventName.DEADLINE_EXCEEDED.value
+        and event.stop_reason == StopReason.DEADLINE_EXCEEDED
+        for event in outcome.timeline.events
+    )
+
+
+def test_policy_execute_timeline_stop_reason_no_strategy() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=None,
+        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func, capture_timeline=True)
+    assert outcome.stop_reason == StopReason.NO_STRATEGY
+    assert outcome.timeline is not None
+    assert any(
+        event.event == EventName.NO_STRATEGY_CONFIGURED.value
+        and event.stop_reason == StopReason.NO_STRATEGY
+        for event in outcome.timeline.events
+    )
+
+
+def test_policy_execute_timeline_stop_reason_aborted() -> None:
+    def func() -> None:
+        raise RuntimeError("boom")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = policy.execute(func, abort_if=lambda: True, capture_timeline=True)
+    assert outcome.stop_reason == StopReason.ABORTED
+    assert outcome.timeline is not None
+    assert any(
+        event.event == EventName.ABORTED.value and event.stop_reason == StopReason.ABORTED
+        for event in outcome.timeline.events
+    )
+
+
+def test_policy_execute_timeline_stop_reason_max_attempts(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda _: None)
+
+    def func() -> None:
+        raise RateLimitError("429")
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=1,
+    )
+
+    outcome = policy.execute(func, capture_timeline=True)
+    assert outcome.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+    assert outcome.timeline is not None
+    assert any(
+        event.event == EventName.MAX_ATTEMPTS_EXCEEDED.value
+        and event.stop_reason == StopReason.MAX_ATTEMPTS_GLOBAL
+        for event in outcome.timeline.events
+    )
 
 
 def test_policy_sleep_handler_defers_execute(monkeypatch: pytest.MonkeyPatch) -> None:

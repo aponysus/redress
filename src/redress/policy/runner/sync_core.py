@@ -24,8 +24,10 @@ from ..types import (
     LogHook,
     MetricHook,
     RetryOutcome,
+    RetryTimeline,
     T,
 )
+from .timeline import _resolve_timeline
 
 
 def _run_sync_call(
@@ -243,10 +245,12 @@ def _run_sync_execute(
     sleep_fn: SleepFn | None,
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
+    capture_timeline: bool | RetryTimeline | None,
 ) -> RetryOutcome[T]:
+    timeline, metric_hook = _resolve_timeline(capture_timeline, on_metric)
     state = _RetryState(
         policy=policy,
-        on_metric=on_metric,
+        on_metric=metric_hook,
         on_log=on_log,
         operation=operation,
         abort_if=abort_if,
@@ -283,7 +287,13 @@ def _run_sync_execute(
                 attempt_end_called = True
                 return cast(
                     RetryOutcome[T],
-                    _build_outcome(ok=True, value=result, state=state, attempts=attempts),
+                    _build_outcome(
+                        ok=True,
+                        value=result,
+                        state=state,
+                        attempts=attempts,
+                        timeline=timeline,
+                    ),
                 )
 
             classification_result = policy.result_classifier(result)
@@ -304,7 +314,13 @@ def _run_sync_execute(
                 attempt_end_called = True
                 return cast(
                     RetryOutcome[T],
-                    _build_outcome(ok=True, value=result, state=state, attempts=attempts),
+                    _build_outcome(
+                        ok=True,
+                        value=result,
+                        state=state,
+                        attempts=attempts,
+                        timeline=timeline,
+                    ),
                 )
 
             state.check_abort(attempt)
@@ -335,7 +351,7 @@ def _run_sync_execute(
             if outcome.decision is AttemptDecision.RETRY:
                 continue
             if outcome.decision is AttemptDecision.ABORTED:
-                return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+                return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
 
             next_sleep_s = (
                 outcome.sleep_s if outcome.decision is AttemptDecision.SCHEDULED else None
@@ -348,6 +364,7 @@ def _run_sync_execute(
                     state=state,
                     attempts=attempts,
                     next_sleep_s=next_sleep_s,
+                    timeline=timeline,
                 ),
             )
         except AbortRetryError as exc:
@@ -365,7 +382,7 @@ def _run_sync_execute(
                     sleep_s=None,
                 )
                 attempt_end_called = True
-            return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+            return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
         except asyncio.CancelledError:
             raise
         except (KeyboardInterrupt, SystemExit):
@@ -391,7 +408,7 @@ def _run_sync_execute(
                         sleep_s=None,
                     )
                     attempt_end_called = True
-                return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+                return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
 
             decision = state.handle_exception(exc, attempt)
             attempt_classification = state.last_classification
@@ -413,7 +430,7 @@ def _run_sync_execute(
                             sleep_s=None,
                         )
                         attempt_end_called = True
-                    return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+                    return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
 
             outcome = _sync_failure_outcome(
                 state=state,
@@ -435,7 +452,7 @@ def _run_sync_execute(
             if outcome.decision is AttemptDecision.RETRY:
                 continue
             if outcome.decision is AttemptDecision.ABORTED:
-                return cast(RetryOutcome[T], _abort_outcome(state, attempts))
+                return cast(RetryOutcome[T], _abort_outcome(state, attempts, timeline=timeline))
 
             next_sleep_s = (
                 outcome.sleep_s if outcome.decision is AttemptDecision.SCHEDULED else None
@@ -448,6 +465,7 @@ def _run_sync_execute(
                     state=state,
                     attempts=attempts,
                     next_sleep_s=next_sleep_s,
+                    timeline=timeline,
                 ),
             )
 
@@ -463,5 +481,5 @@ def _run_sync_execute(
     state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
     return cast(
         RetryOutcome[T],
-        _build_outcome(ok=False, value=None, state=state, attempts=attempts),
+        _build_outcome(ok=False, value=None, state=state, attempts=attempts, timeline=timeline),
     )

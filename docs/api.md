@@ -5,11 +5,11 @@
 - `Policy`, `AsyncPolicy`
   - Unified resilience containers; use `Policy(retry=Retry(...))`
   - `.call(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
-  - `.execute(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
+  - `.execute(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None, capture_timeline=False)`
   - `.context(on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
 - `Retry`, `AsyncRetry`
   - Retry components with `result_classifier` support
-  - `.call(..., abort_if=None, sleep=None)`, `.execute(..., abort_if=None, sleep=None)`, `.context(..., abort_if=None, sleep=None)`
+  - `.call(..., abort_if=None, sleep=None)`, `.execute(..., abort_if=None, sleep=None, capture_timeline=False)`, `.context(..., abort_if=None, sleep=None)`
   - `.from_config(config, classifier=...)`
 - `RetryPolicy`, `AsyncRetryPolicy`
   - Backward-compatible sugar for `Policy(retry=Retry(...))`
@@ -53,6 +53,9 @@
 
 - `RetryOutcome[T]` from `execute()` with attempts, stop_reason, and last error info
 - `RetryOutcome.next_sleep_s` when retries are deferred via a sleep handler
+- `RetryOutcome.timeline` contains a `RetryTimeline` when `capture_timeline=True`
+- `RetryTimeline` with `TimelineEvent` entries (attempt, event, stop_reason, cause, sleep_s, elapsed_s)
+- `capture_timeline` accepts `True` or a `RetryTimeline` instance to reuse a collector
 
 ## Metrics helpers
 

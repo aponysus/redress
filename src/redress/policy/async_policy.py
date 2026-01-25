@@ -25,6 +25,7 @@ from .types import (
     LogHook,
     MetricHook,
     RetryOutcome,
+    RetryTimeline,
     T,
 )
 
@@ -218,6 +219,7 @@ class AsyncPolicy:
         sleep: SleepFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
+        capture_timeline: bool | RetryTimeline | None = None,
     ) -> RetryOutcome[T]:
         start = time.monotonic()
         breaker = self.circuit_breaker
@@ -417,6 +419,7 @@ class AsyncPolicy:
             sleep=sleep,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
+            capture_timeline=capture_timeline,
         )
 
         if breaker is not None:

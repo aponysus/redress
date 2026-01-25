@@ -2,7 +2,7 @@ from typing import Any
 
 from ..circuit import CircuitState
 from ..errors import ErrorClass, StopReason
-from .types import FailureCause, LogHook, MetricHook, RetryOutcome
+from .types import FailureCause, LogHook, MetricHook, RetryOutcome, RetryTimeline
 
 
 def _emit_breaker_event(
@@ -46,6 +46,7 @@ def _build_policy_outcome(
     cause: FailureCause | None,
     elapsed_s: float,
     next_sleep_s: float | None = None,
+    timeline: RetryTimeline | None = None,
 ) -> RetryOutcome[Any]:
     return RetryOutcome(
         ok=ok,
@@ -58,4 +59,5 @@ def _build_policy_outcome(
         cause=cause,
         elapsed_s=elapsed_s,
         next_sleep_s=next_sleep_s,
+        timeline=timeline,
     )

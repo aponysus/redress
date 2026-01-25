@@ -8,6 +8,7 @@ from ..types import (
     LogHook,
     MetricHook,
     RetryOutcome,
+    RetryTimeline,
     T,
 )
 from .async_core import _run_async_call, _run_async_execute
@@ -49,6 +50,7 @@ async def run_async_execute(
     sleep_fn: SleepFn | None,
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
+    capture_timeline: bool | RetryTimeline | None,
 ) -> RetryOutcome[T]:
     return await _run_async_execute(
         policy=policy,
@@ -60,4 +62,5 @@ async def run_async_execute(
         sleep_fn=sleep_fn,
         attempt_start_hook=attempt_start_hook,
         attempt_end_hook=attempt_end_hook,
+        capture_timeline=capture_timeline,
     )

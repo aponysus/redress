@@ -16,6 +16,7 @@ from .types import (
     LogHook,
     MetricHook,
     RetryOutcome,
+    RetryTimeline,
     T,
 )
 
@@ -254,6 +255,7 @@ class Retry(_BaseRetryPolicy):
         sleep: SleepFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
+        capture_timeline: bool | RetryTimeline | None = None,
     ) -> RetryOutcome[T]:
         """
         Execute `func` and return a structured RetryOutcome.
@@ -275,6 +277,7 @@ class Retry(_BaseRetryPolicy):
             sleep_fn=sleep_fn,
             attempt_start_hook=attempt_start_hook,
             attempt_end_hook=attempt_end_hook,
+            capture_timeline=capture_timeline,
         )
 
     def context(

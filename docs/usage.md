@@ -291,6 +291,25 @@ else:
     print(outcome.stop_reason, outcome.last_class)
 ```
 
+Capture an opt-in per-attempt timeline for debugging:
+
+```python
+outcome = policy.execute(do_work, capture_timeline=True)
+
+if outcome.timeline is not None:
+    for event in outcome.timeline.events:
+        print(event.attempt, event.event, event.stop_reason)
+```
+
+You can also pass an explicit collector:
+
+```python
+from redress import RetryTimeline
+
+timeline = RetryTimeline()
+outcome = policy.execute(do_work, capture_timeline=timeline)
+```
+
 ## Cooperative abort (shutdown/drain)
 
 Worker loops often need to stop retries when shutting down. Use `abort_if` or

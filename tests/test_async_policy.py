@@ -244,6 +244,43 @@ def test_async_policy_execute_success_after_retries(monkeypatch: pytest.MonkeyPa
     assert outcome.stop_reason is None
 
 
+def test_async_policy_execute_timeline_result_based(monkeypatch: pytest.MonkeyPatch) -> None:
+    attempts = {"n": 0}
+
+    async def func() -> str:
+        attempts["n"] += 1
+        if attempts["n"] < 2:
+            return "retry"
+        return "ok"
+
+    def result_classifier(value: str) -> ErrorClass | None:
+        if value == "retry":
+            return ErrorClass.RATE_LIMIT
+        return None
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        result_classifier=result_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    outcome = asyncio.run(policy.execute(func, capture_timeline=True))
+    assert outcome.ok is True
+    assert outcome.timeline is not None
+    retry_event = next(
+        event for event in outcome.timeline.events if event.event == EventName.RETRY.value
+    )
+    assert retry_event.error_class == ErrorClass.RATE_LIMIT
+    assert retry_event.cause == "result"
+
+
 def test_async_policy_execute_result_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     async def func() -> str:
         return "bad"

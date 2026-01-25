@@ -28,8 +28,10 @@ from .policy import (
     Retry,
     RetryOutcome,
     RetryPolicy,
+    RetryTimeline,
     SleepDecision,
     SleepFn,
+    TimelineEvent,
     retry,
 )
 from .strategies import (
@@ -48,6 +50,7 @@ __all__ = [
     "Policy",
     "Retry",
     "RetryOutcome",
+    "RetryTimeline",
     "SleepDecision",
     "SleepFn",
     "AttemptContext",
@@ -82,4 +85,5 @@ __all__ = [
     "prometheus_metric_hook",
     "otel_metric_hook",
     "retry",
+    "TimelineEvent",
 ]

@@ -13,7 +13,9 @@ from .types import (
     MetricHook,
     P,
     RetryOutcome,
+    RetryTimeline,
     T,
+    TimelineEvent,
 )
 from .wrappers import AsyncRetryPolicy, RetryPolicy
 
@@ -34,8 +36,10 @@ __all__ = [
     "AttemptDecision",
     "AbortPredicate",
     "RetryOutcome",
+    "RetryTimeline",
     "SleepDecision",
     "SleepFn",
     "P",
     "T",
+    "TimelineEvent",
 ]
