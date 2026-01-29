@@ -2,7 +2,7 @@
 
 > redress (v.): to remedy or to set right.
 
-Classifier-driven retries with per-class backoff and structured hooks for Python services.
+Policy-driven retries and circuit breaking for Python services, designed to make failure handling explicit, bounded, and observable.
 
 ## Why redress?
 
