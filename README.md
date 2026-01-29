@@ -9,10 +9,31 @@
 
 > redress (v.): to remedy or to set right.
 
-Classifier-driven retries with per-class backoff and structured hooks for Python services.
+Policy-driven retries and circuit breaking for Python services, designed to make failure handling explicit, bounded, and observable.
 
-Composable, low-overhead retry policies with **sync/async symmetry**, **deterministic envelopes**, and **lightweight composition**.  
-Designed for services that need predictable retry behavior and clean integration with metrics/logging.
+## Why redress?
+
+Most retry libraries give you a decorator with a fixed backoff, or one global strategy for all errors. **redress** takes a different approach:
+
+**Classify, then dispatch.** Exceptions get mapped to semantic error classes (RATE_LIMIT, TRANSIENT, SERVER_ERROR, etc.), and each class can have its own backoff strategy. Rate limits back off aggressively; transient blips retry fast.
+
+```python
+policy = RetryPolicy(
+    classifier=default_classifier,
+    strategy=decorrelated_jitter(max_s=5.0),  # default fallback
+    strategies={
+        ErrorClass.RATE_LIMIT: decorrelated_jitter(max_s=60.0),
+        ErrorClass.TRANSIENT: decorrelated_jitter(max_s=1.0),
+    },
+)
+```
+
+**Single observability hook.** One callback for success, retry, permanent failure, deadline exceeded—plug it into your metrics/logging and always know why retries stopped.
+
+**Circuit breaking.** Policies can open a circuit after repeated failures, failing fast instead of piling up retries. Retries and circuit breakers are treated as policy responses to classified failure, not separate mechanisms.
+
+**Sync/async symmetry.** `RetryPolicy` and `AsyncRetryPolicy` share the same API and configuration.
+
 
 ## Documentation
 
@@ -46,6 +67,10 @@ def flaky():
     ...
 
 result = policy.call(flaky)
+
+# RATE_LIMIT failures back off aggressively,
+# TRANSIENT failures retry quickly,
+# UNKNOWN failures are tightly capped.
 ```
 
 ### Decorator quick start
@@ -65,10 +90,11 @@ def fetch_user():
 )
 def fetch_user_custom():
     ...
-
+```
 If you provide `strategies` without `strategy`, the decorator will not add a default
 strategy.
 
+```python
 # Context manager for repeated calls with shared hooks/operation
 policy = RetryPolicy(classifier=default_classifier, strategy=decorrelated_jitter(max_s=3.0))
 with policy.context(operation="batch") as retry:
@@ -92,32 +118,6 @@ async def flaky_async():
 
 asyncio.run(async_policy.call(flaky_async))
 ```
-
-## Why redress?
-
-Most retry libraries give you either:
-
-- decorators with a fixed backoff model, or  
-- one global strategy for all errors.
-
-**redress** gives you something different:
-
-### ✔ Exception → coarse error class mapping  
-Provided via `default_classifier`.
-
-### ✔ Per-class strategy dispatch  
-Each `ErrorClass` can use its own backoff logic.
-
-### ✔ Dependency-free strategies with jitter  
-`decorrelated_jitter`, `equal_jitter`, `token_backoff`.
-
-### ✔ Deadlines, max attempts, and separate caps for UNKNOWN  
-Deterministic retry envelopes.
-
-### ✔ Clean observability hook  
-
-Single callback for:  
-`success`, `retry`, `permanent_fail`, `deadline_exceeded`, `max_attempts_exceeded`, `max_unknown_attempts_exceeded`.
 
 ## Error Classes & Classification
 
