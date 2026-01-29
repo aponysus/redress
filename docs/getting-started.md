@@ -31,15 +31,17 @@ async def fetch_user_async():
 ## Policies directly
 
 ```python
-from redress import RetryPolicy, default_classifier
+from redress import Policy, Retry, default_classifier
 from redress.strategies import decorrelated_jitter
 
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),
+    ),
 )
 
 result = policy.call(lambda: do_work(), operation="sync_task")
 ```
 
-Async has the same shape with `AsyncRetryPolicy`.
+Async has the same shape with `AsyncPolicy` + `AsyncRetry` (or the `AsyncRetryPolicy` shortcut).

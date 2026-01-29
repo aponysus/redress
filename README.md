@@ -18,13 +18,15 @@ Most retry libraries give you a decorator with a fixed backoff, or one global st
 **Classify, then dispatch.** Exceptions get mapped to semantic error classes (RATE_LIMIT, TRANSIENT, SERVER_ERROR, etc.), and each class can have its own backoff strategy. Rate limits back off aggressively; transient blips retry fast.
 
 ```python
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),  # default fallback
-    strategies={
-        ErrorClass.RATE_LIMIT: decorrelated_jitter(max_s=60.0),
-        ErrorClass.TRANSIENT: decorrelated_jitter(max_s=1.0),
-    },
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),  # default fallback
+        strategies={
+            ErrorClass.RATE_LIMIT: decorrelated_jitter(max_s=60.0),
+            ErrorClass.TRANSIENT: decorrelated_jitter(max_s=1.0),
+        },
+    ),
 )
 ```
 
@@ -32,7 +34,7 @@ policy = RetryPolicy(
 
 **Circuit breaking.** Policies can open a circuit after repeated failures, failing fast instead of piling up retries. Retries and circuit breakers are treated as policy responses to classified failure, not separate mechanisms.
 
-**Sync/async symmetry.** `RetryPolicy` and `AsyncRetryPolicy` share the same API and configuration.
+**Sync/async symmetry.** `Policy` and `AsyncPolicy` share the same API and configuration; `RetryPolicy` / `AsyncRetryPolicy` remain convenient shortcuts.
 
 
 ## Documentation
@@ -53,13 +55,23 @@ pip install redress
 ## Quick Start
 
 ```python
-from redress.policy import RetryPolicy
-from redress.classify import default_classifier
+from redress import CircuitBreaker, ErrorClass, Policy, Retry, default_classifier
 from redress.strategies import decorrelated_jitter
 
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=10.0),
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),
+        deadline_s=60,
+        max_attempts=6,
+    ),
+    # Fail fast when the upstream is persistently unhealthy.
+    circuit_breaker=CircuitBreaker(
+        failure_threshold=5,
+        window_s=60.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.SERVER_ERROR, ErrorClass.CONCURRENCY},
+    ),
 )
 
 def flaky():
@@ -96,21 +108,23 @@ strategy.
 
 ```python
 # Context manager for repeated calls with shared hooks/operation
-policy = RetryPolicy(classifier=default_classifier, strategy=decorrelated_jitter(max_s=3.0))
 with policy.context(operation="batch") as retry:
-    retry(fetch_user)
+    retry(task1)
+    retry(task2)
 ```
 
 ### Async quick start
 
 ```python
 import asyncio
-from redress import AsyncRetryPolicy, default_classifier
+from redress import AsyncPolicy, AsyncRetry, default_classifier
 from redress.strategies import decorrelated_jitter
 
-async_policy = AsyncRetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),
+async_policy = AsyncPolicy(
+    retry=AsyncRetry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),
+    ),
 )
 
 async def flaky_async():
@@ -183,26 +197,30 @@ Built‑ins:
 ## Per-Class Example
 
 ```python
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=10.0),  # default
-    strategies={
-        ErrorClass.CONCURRENCY: decorrelated_jitter(max_s=1.0),
-        ErrorClass.RATE_LIMIT: decorrelated_jitter(max_s=60.0),
-        ErrorClass.SERVER_ERROR: equal_jitter(max_s=30.0),
-    },
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=10.0),  # default
+        strategies={
+            ErrorClass.CONCURRENCY: decorrelated_jitter(max_s=1.0),
+            ErrorClass.RATE_LIMIT: decorrelated_jitter(max_s=60.0),
+            ErrorClass.SERVER_ERROR: equal_jitter(max_s=30.0),
+        },
+    ),
 )
 ```
 
 ## Deadline & Attempt Controls
 
 ```python
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(),
-    deadline_s=60,
-    max_attempts=8,
-    max_unknown_attempts=2,
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(),
+        deadline_s=60,
+        max_attempts=8,
+        max_unknown_attempts=2,
+    ),
 )
 ```
 
@@ -234,7 +252,7 @@ redress doctor app_retry:cfg
 redress doctor app_retry:cfg --show
 ```
 
-`doctor` accepts `module:attribute` pointing to a `RetryConfig`, `RetryPolicy`, or `AsyncRetryPolicy`. The attribute defaults to `config` if omitted (e.g., `myapp.settings` will look for `settings:config`).
+`doctor` accepts `module:attribute` pointing to a `RetryConfig`, `Policy`/`AsyncPolicy`, `Retry`/`AsyncRetry`, or the `RetryPolicy`/`AsyncRetryPolicy` shortcuts. The attribute defaults to `config` if omitted (e.g., `myapp.settings` will look for `settings:config`).
 
 Example `--show` output:
 
@@ -255,7 +273,7 @@ OK: 'app_retry:cfg' passed config checks.
 ## Examples (in `docs/snippets/`)
 
 - Sync httpx demo: `uv pip install httpx` then `uv run python docs/snippets/httpx_sync_retry.py`
-- Async httpx demo using `AsyncRetryPolicy`: `uv pip install httpx` then `uv run python docs/snippets/httpx_async_retry.py`
+- Async httpx demo: `uv pip install httpx` then `uv run python docs/snippets/httpx_async_retry.py`
 - Async worker loop with retries: `uv run python docs/snippets/async_worker_retry.py`
 - Decorator usage (sync + async): `uv run python docs/snippets/decorator_retry.py`
 - FastAPI proxy with metrics counter: `uv pip install "fastapi[standard]" httpx` then `uv run uvicorn docs.snippets.fastapi_downstream:app --reload`
