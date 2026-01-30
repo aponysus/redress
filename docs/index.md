@@ -2,7 +2,9 @@
 
 > redress (v.): to remedy or to set right.
 
-Policy-driven retries and circuit breaking for Python services, designed to make failure handling explicit, bounded, and observable.
+Policy-driven failure handling for Python services.
+
+redress treats retries, circuit breakers, and stop conditions as coordinated responses to classified failure—making failure behavior explicit, bounded, and observable.
 
 ## Why redress?
 
