@@ -182,8 +182,6 @@ It's a library of failure-policy primitives that compose cleanly inside real ser
 
 ## Where to go next
 
-GitHub: https://github.com/aponysus/redress
-
-Docs: https://aponysus.github.io/redress/
-
-Getting started: https://aponysus.github.io/redress/getting-started/
+- GitHub: [https://github.com/aponysus/redress/](https://github.com/aponysus/redress/)
+- Docs: [https://aponysus.github.io/redress/](https://aponysus.github.io/redress/)
+- Getting started: [https://aponysus.github.io/redress/getting-started/](https://aponysus.github.io/redress/getting-started/)
