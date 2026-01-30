@@ -1,4 +1,11 @@
-from ..sleep import SleepDecision, SleepFn
+from ..sleep import (
+    AsyncBeforeSleepHook,
+    AsyncSleeperFn,
+    BeforeSleepHook,
+    SleepDecision,
+    SleeperFn,
+    SleepFn,
+)
 from .container import AsyncPolicy, Policy
 from .decorator import retry
 from .retry import AsyncRetry, Retry
@@ -39,6 +46,10 @@ __all__ = [
     "RetryTimeline",
     "SleepDecision",
     "SleepFn",
+    "BeforeSleepHook",
+    "AsyncBeforeSleepHook",
+    "SleeperFn",
+    "AsyncSleeperFn",
     "P",
     "T",
     "TimelineEvent",

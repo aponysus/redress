@@ -1,13 +1,18 @@
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from ..config import ResultClassifierFn, RetryConfig
 from ..errors import ErrorClass
-from ..sleep import SleepFn
+from ..sleep import BeforeSleepHook, SleeperFn, SleepFn
 from ..strategies import StrategyFn
 from .base import _BaseRetryPolicy
 from .context import _RetryContext
-from .retry_helpers import _resolve_attempt_hooks, _resolve_sleep
+from .retry_helpers import (
+    _resolve_attempt_hooks,
+    _resolve_before_sleep,
+    _resolve_sleep,
+    _resolve_sleeper,
+)
 from .runner import run_sync_call, run_sync_execute
 from .types import (
     AbortPredicate,
@@ -90,6 +95,8 @@ class Retry(_BaseRetryPolicy):
         strategy: StrategyFn | None = None,
         strategies: Mapping[ErrorClass, StrategyFn] | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
         deadline_s: float = 60.0,
@@ -103,6 +110,8 @@ class Retry(_BaseRetryPolicy):
             strategy=strategy,
             strategies=strategies,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             deadline_s=deadline_s,
             max_attempts=max_attempts,
             max_unknown_attempts=max_unknown_attempts,
@@ -127,6 +136,8 @@ class Retry(_BaseRetryPolicy):
             strategy=config.default_strategy,
             strategies=config.class_strategies,
             sleep=config.sleep,
+            before_sleep=cast(BeforeSleepHook | None, config.before_sleep),
+            sleeper=cast(SleeperFn | None, config.sleeper),
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,
@@ -142,6 +153,8 @@ class Retry(_BaseRetryPolicy):
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> Any:
@@ -206,6 +219,14 @@ class Retry(_BaseRetryPolicy):
             Optional handler that can sleep, defer, or abort retry backoff
             based on the BackoffContext and proposed sleep duration.
 
+        before_sleep:
+            Optional hook invoked right before an actual sleep occurs. It
+            cannot change the decision to sleep/defer/abort.
+
+        sleeper:
+            Optional function used to perform the actual sleep when a retry
+            delay is needed (defaults to time.sleep).
+
         Returns
         -------
         Any
@@ -226,6 +247,14 @@ class Retry(_BaseRetryPolicy):
             Raised when abort_if returns True or the user raises AbortRetryError.
         """
         sleep_fn = _resolve_sleep(self.sleep, sleep)
+        before_sleep_hook = cast(
+            BeforeSleepHook | None,
+            _resolve_before_sleep(cast(BeforeSleepHook | None, self.before_sleep), before_sleep),
+        )
+        sleeper_fn = cast(
+            SleeperFn | None,
+            _resolve_sleeper(cast(SleeperFn | None, self.sleeper), sleeper),
+        )
         attempt_start_hook, attempt_end_hook = _resolve_attempt_hooks(
             policy_start=self.on_attempt_start,
             policy_end=self.on_attempt_end,
@@ -240,6 +269,8 @@ class Retry(_BaseRetryPolicy):
             operation=operation,
             abort_if=abort_if,
             sleep_fn=sleep_fn,
+            before_sleep=before_sleep_hook,
+            sleeper=sleeper_fn,
             attempt_start_hook=attempt_start_hook,
             attempt_end_hook=attempt_end_hook,
         )
@@ -253,6 +284,8 @@ class Retry(_BaseRetryPolicy):
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
         capture_timeline: bool | RetryTimeline | None = None,
@@ -261,6 +294,14 @@ class Retry(_BaseRetryPolicy):
         Execute `func` and return a structured RetryOutcome.
         """
         sleep_fn = _resolve_sleep(self.sleep, sleep)
+        before_sleep_hook = cast(
+            BeforeSleepHook | None,
+            _resolve_before_sleep(cast(BeforeSleepHook | None, self.before_sleep), before_sleep),
+        )
+        sleeper_fn = cast(
+            SleeperFn | None,
+            _resolve_sleeper(cast(SleeperFn | None, self.sleeper), sleeper),
+        )
         attempt_start_hook, attempt_end_hook = _resolve_attempt_hooks(
             policy_start=self.on_attempt_start,
             policy_end=self.on_attempt_end,
@@ -275,6 +316,8 @@ class Retry(_BaseRetryPolicy):
             operation=operation,
             abort_if=abort_if,
             sleep_fn=sleep_fn,
+            before_sleep=before_sleep_hook,
+            sleeper=sleeper_fn,
             attempt_start_hook=attempt_start_hook,
             attempt_end_hook=attempt_end_hook,
             capture_timeline=capture_timeline,
@@ -288,6 +331,8 @@ class Retry(_BaseRetryPolicy):
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> _RetryContext:
@@ -306,6 +351,8 @@ class Retry(_BaseRetryPolicy):
             operation,
             abort_if,
             sleep,
+            before_sleep,
+            sleeper,
             on_attempt_start,
             on_attempt_end,
         )

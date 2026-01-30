@@ -2,7 +2,13 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
-from ..sleep import SleepFn
+from ..sleep import (
+    AsyncBeforeSleepHook,
+    AsyncSleeperFn,
+    BeforeSleepHook,
+    SleeperFn,
+    SleepFn,
+)
 from .types import AbortPredicate, AttemptHook, LogHook, MetricHook, T
 
 if TYPE_CHECKING:
@@ -20,6 +26,8 @@ class _RetryContext:
     operation: str | None
     abort_if: AbortPredicate | None
     sleep: SleepFn | None
+    before_sleep: BeforeSleepHook | None
+    sleeper: SleeperFn | None
     on_attempt_start: AttemptHook | None
     on_attempt_end: AttemptHook | None
 
@@ -37,6 +45,8 @@ class _RetryContext:
             operation=self.operation,
             abort_if=self.abort_if,
             sleep=self.sleep,
+            before_sleep=self.before_sleep,
+            sleeper=self.sleeper,
             on_attempt_start=self.on_attempt_start,
             on_attempt_end=self.on_attempt_end,
         )
@@ -51,6 +61,8 @@ class _AsyncRetryContext:
     operation: str | None
     abort_if: AbortPredicate | None
     sleep: SleepFn | None
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None
+    sleeper: SleeperFn | AsyncSleeperFn | None
     on_attempt_start: AttemptHook | None
     on_attempt_end: AttemptHook | None
 
@@ -68,6 +80,8 @@ class _AsyncRetryContext:
             operation=self.operation,
             abort_if=self.abort_if,
             sleep=self.sleep,
+            before_sleep=self.before_sleep,
+            sleeper=self.sleeper,
             on_attempt_start=self.on_attempt_start,
             on_attempt_end=self.on_attempt_end,
         )
@@ -82,6 +96,8 @@ class _PolicyContext:
     operation: str | None
     abort_if: AbortPredicate | None
     sleep: SleepFn | None
+    before_sleep: BeforeSleepHook | None
+    sleeper: SleeperFn | None
     on_attempt_start: AttemptHook | None
     on_attempt_end: AttemptHook | None
 
@@ -99,6 +115,8 @@ class _PolicyContext:
             operation=self.operation,
             abort_if=self.abort_if,
             sleep=self.sleep,
+            before_sleep=self.before_sleep,
+            sleeper=self.sleeper,
             on_attempt_start=self.on_attempt_start,
             on_attempt_end=self.on_attempt_end,
         )
@@ -113,6 +131,8 @@ class _AsyncPolicyContext:
     operation: str | None
     abort_if: AbortPredicate | None
     sleep: SleepFn | None
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None
+    sleeper: SleeperFn | AsyncSleeperFn | None
     on_attempt_start: AttemptHook | None
     on_attempt_end: AttemptHook | None
 
@@ -130,6 +150,8 @@ class _AsyncPolicyContext:
             operation=self.operation,
             abort_if=self.abort_if,
             sleep=self.sleep,
+            before_sleep=self.before_sleep,
+            sleeper=self.sleeper,
             on_attempt_start=self.on_attempt_start,
             on_attempt_end=self.on_attempt_end,
         )

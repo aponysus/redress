@@ -1,7 +1,7 @@
 from collections.abc import Callable
 from typing import Any
 
-from ...sleep import SleepFn
+from ...sleep import BeforeSleepHook, SleeperFn, SleepFn
 from ..base import _BaseRetryPolicy
 from ..types import (
     AbortPredicate,
@@ -24,6 +24,8 @@ def run_sync_call(
     operation: str | None,
     abort_if: AbortPredicate | None,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | None,
+    sleeper: SleeperFn | None,
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
 ) -> Any:
@@ -35,6 +37,8 @@ def run_sync_call(
         operation=operation,
         abort_if=abort_if,
         sleep_fn=sleep_fn,
+        before_sleep=before_sleep,
+        sleeper=sleeper,
         attempt_start_hook=attempt_start_hook,
         attempt_end_hook=attempt_end_hook,
     )
@@ -49,6 +53,8 @@ def run_sync_execute(
     operation: str | None,
     abort_if: AbortPredicate | None,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | None,
+    sleeper: SleeperFn | None,
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
     capture_timeline: bool | RetryTimeline | None,
@@ -61,6 +67,8 @@ def run_sync_execute(
         operation=operation,
         abort_if=abort_if,
         sleep_fn=sleep_fn,
+        before_sleep=before_sleep,
+        sleeper=sleeper,
         attempt_start_hook=attempt_start_hook,
         attempt_end_hook=attempt_end_hook,
         capture_timeline=capture_timeline,

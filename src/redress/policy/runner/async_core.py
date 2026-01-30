@@ -10,7 +10,13 @@ from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 from ...errors import AbortRetryError, RetryExhaustedError, StopReason
-from ...sleep import SleepFn
+from ...sleep import (
+    AsyncBeforeSleepHook,
+    AsyncSleeperFn,
+    BeforeSleepHook,
+    SleeperFn,
+    SleepFn,
+)
 from ..base import _BaseRetryPolicy
 from ..retry_helpers import (
     _abort_outcome,
@@ -102,6 +108,8 @@ async def _run_async_call(
     operation: str | None,
     abort_if: AbortPredicate | None,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+    sleeper: SleeperFn | AsyncSleeperFn | None,
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
 ) -> T:
@@ -150,6 +158,8 @@ async def _run_async_call(
                 result=None,
                 cause=attempt_state.cause,
                 sleep_fn=sleep_fn,
+                before_sleep=before_sleep,
+                sleeper=sleeper,
             )
             _call_attempt_end_from_outcome(
                 attempt_end_hook, state=state, attempt=attempt, outcome=outcome
@@ -190,6 +200,8 @@ async def _run_async_call(
             result=result,
             cause=attempt_state.cause,
             sleep_fn=sleep_fn,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
         )
         _call_attempt_end_from_outcome(
             attempt_end_hook, state=state, attempt=attempt, outcome=outcome
@@ -227,6 +239,8 @@ async def _run_async_execute(
     operation: str | None,
     abort_if: AbortPredicate | None,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+    sleeper: SleeperFn | AsyncSleeperFn | None,
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
     capture_timeline: bool | RetryTimeline | None,
@@ -283,6 +297,8 @@ async def _run_async_execute(
                 result=result,
                 cause=attempt_state.cause,
                 sleep_fn=sleep_fn,
+                before_sleep=before_sleep,
+                sleeper=sleeper,
             )
             _call_attempt_end_from_outcome(
                 attempt_end_hook, state=state, attempt=attempt, outcome=outcome
@@ -345,6 +361,8 @@ async def _run_async_execute(
                 result=None,
                 cause=attempt_state.cause,
                 sleep_fn=sleep_fn,
+                before_sleep=before_sleep,
+                sleeper=sleeper,
             )
             _call_attempt_end_from_outcome(
                 attempt_end_hook, state=state, attempt=attempt, outcome=outcome

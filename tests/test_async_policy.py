@@ -318,11 +318,15 @@ def test_async_policy_sleep_handler_defers_execute(monkeypatch: pytest.MonkeyPat
 
     sleep_calls: list[float] = []
     contexts: list[BackoffContext] = []
+    before_calls: list[tuple[ErrorClass, float]] = []
 
     def sleep_fn(ctx: BackoffContext, sleep_s: float) -> SleepDecision:
         contexts.append(ctx)
         sleep_calls.append(sleep_s)
         return SleepDecision.DEFER
+
+    async def before_sleep(ctx: BackoffContext, sleep_s: float) -> None:
+        before_calls.append((ctx.classification.klass, sleep_s))
 
     async def fail_sleep(_: float) -> None:
         raise AssertionError("sleep should not be called for DEFER")
@@ -337,12 +341,15 @@ def test_async_policy_sleep_handler_defers_execute(monkeypatch: pytest.MonkeyPat
         max_attempts=3,
     )
 
-    outcome = asyncio.run(policy.execute(func, on_metric=metric_hook, sleep=sleep_fn))
+    outcome = asyncio.run(
+        policy.execute(func, on_metric=metric_hook, sleep=sleep_fn, before_sleep=before_sleep)
+    )
     assert outcome.ok is False
     assert outcome.stop_reason == StopReason.SCHEDULED
     assert outcome.next_sleep_s == 1.0
     assert sleep_calls == [1.0]
     assert contexts[0].classification.klass is ErrorClass.TRANSIENT
+    assert before_calls == []
 
     scheduled = next(event for event in events if event[0] == EventName.SCHEDULED.value)
     assert scheduled[3]["stop_reason"] == StopReason.SCHEDULED.value
@@ -404,6 +411,107 @@ def test_async_policy_sleep_handler_sleeps_and_retries(monkeypatch: pytest.Monke
     assert sleeps == [0.3]
 
 
+def test_async_policy_custom_sleeper_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+    sleep_calls: list[float] = []
+
+    async def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return "ok"
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    async def sleeper(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    async def fail_sleep(_: float) -> None:
+        raise AssertionError("asyncio.sleep should not be called")
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", fail_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=lambda ctx: 0.3,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    result = asyncio.run(policy.call(func, sleeper=sleeper))
+    assert result == "ok"
+    assert sleep_calls == [0.3]
+
+
+def test_async_policy_before_sleep_hook_called(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+    before_calls: list[tuple[ErrorClass, float]] = []
+
+    async def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return "ok"
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    async def before_sleep(ctx: BackoffContext, sleep_s: float) -> None:
+        before_calls.append((ctx.classification.klass, sleep_s))
+
+    async def record_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", record_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=lambda ctx: 0.3,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    result = asyncio.run(policy.call(func, before_sleep=before_sleep))
+    assert result == "ok"
+    assert before_calls == [(ErrorClass.TRANSIENT, 0.3)]
+
+
+def test_async_policy_before_sleep_sync_hook_called(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"n": 0}
+    before_calls: list[tuple[ErrorClass, float]] = []
+
+    async def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return "ok"
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def before_sleep(ctx: BackoffContext, sleep_s: float) -> None:
+        before_calls.append((ctx.classification.klass, sleep_s))
+
+    async def record_sleep(seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", record_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=classifier,
+        strategy=lambda ctx: 0.3,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    result = asyncio.run(policy.call(func, before_sleep=before_sleep))
+    assert result == "ok"
+    assert before_calls == [(ErrorClass.TRANSIENT, 0.3)]
+
+
 def test_async_sleep_handler_invalid_return_raises() -> None:
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
@@ -434,6 +542,8 @@ def test_async_sleep_handler_invalid_return_raises() -> None:
                 attempt=1,
                 decision=decision,
                 sleep_fn=lambda _ctx, _sleep: "nope",
+                before_sleep=None,
+                sleeper=None,
             )
 
     asyncio.run(run())

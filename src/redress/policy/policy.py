@@ -15,7 +15,7 @@ from ..errors import (
     RetryExhaustedError,
     StopReason,
 )
-from ..sleep import SleepFn
+from ..sleep import BeforeSleepHook, SleeperFn, SleepFn
 from .context import _PolicyContext
 from .execution import (
     ExecutionContext,
@@ -66,6 +66,8 @@ class Policy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> Any:
@@ -89,6 +91,8 @@ class Policy:
                     operation=operation,
                     abort_if=abort_if,
                     sleep=sleep,
+                    before_sleep=before_sleep,
+                    sleeper=sleeper,
                     on_attempt_start=on_attempt_start,
                     on_attempt_end=on_attempt_end,
                 )
@@ -197,6 +201,8 @@ class Policy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
         capture_timeline: bool | RetryTimeline | None = None,
@@ -224,6 +230,8 @@ class Policy:
                 operation,
                 abort_if,
                 sleep,
+                before_sleep,
+                sleeper,
                 on_attempt_start,
                 on_attempt_end,
                 capture_timeline,
@@ -241,6 +249,8 @@ class Policy:
         operation: str | None,
         abort_if: AbortPredicate | None,
         sleep: SleepFn | None,
+        before_sleep: BeforeSleepHook | None,
+        sleeper: SleeperFn | None,
         on_attempt_start: AttemptHook | None,
         on_attempt_end: AttemptHook | None,
         capture_timeline: bool | RetryTimeline | None,
@@ -255,6 +265,8 @@ class Policy:
             operation=operation,
             abort_if=abort_if,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
             capture_timeline=capture_timeline,
@@ -343,6 +355,8 @@ class Policy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> _PolicyContext:
@@ -356,6 +370,8 @@ class Policy:
             operation,
             abort_if,
             sleep,
+            before_sleep,
+            sleeper,
             on_attempt_start,
             on_attempt_end,
         )

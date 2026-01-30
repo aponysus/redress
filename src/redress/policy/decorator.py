@@ -6,7 +6,13 @@ from typing import cast, overload
 from ..classify import default_classifier
 from ..config import ResultClassifierFn
 from ..errors import ErrorClass
-from ..sleep import SleepFn
+from ..sleep import (
+    AsyncBeforeSleepHook,
+    AsyncSleeperFn,
+    BeforeSleepHook,
+    SleeperFn,
+    SleepFn,
+)
 from ..strategies import StrategyFn, decorrelated_jitter
 from .types import AbortPredicate, AttemptHook, ClassifierFn, LogHook, MetricHook, P, T
 from .wrappers import AsyncRetryPolicy, RetryPolicy
@@ -21,6 +27,8 @@ def retry(
     strategy: StrategyFn | None = ...,
     strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
     sleep: SleepFn | None = ...,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = ...,
+    sleeper: SleeperFn | AsyncSleeperFn | None = ...,
     deadline_s: float = ...,
     max_attempts: int = ...,
     max_unknown_attempts: int | None = ...,
@@ -43,6 +51,8 @@ def retry(
     strategy: StrategyFn | None = ...,
     strategies: Mapping[ErrorClass, StrategyFn] | None = ...,
     sleep: SleepFn | None = ...,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = ...,
+    sleeper: SleeperFn | AsyncSleeperFn | None = ...,
     deadline_s: float = ...,
     max_attempts: int = ...,
     max_unknown_attempts: int | None = ...,
@@ -64,6 +74,8 @@ def retry(
     strategy: StrategyFn | None = None,
     strategies: Mapping[ErrorClass, StrategyFn] | None = None,
     sleep: SleepFn | None = None,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+    sleeper: SleeperFn | AsyncSleeperFn | None = None,
     deadline_s: float = 60.0,
     max_attempts: int = 6,
     max_unknown_attempts: int | None = 2,
@@ -108,6 +120,8 @@ def retry(
                 strategy=effective_strategy,
                 strategies=strategies,
                 sleep=sleep,
+                before_sleep=before_sleep,
+                sleeper=sleeper,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -135,6 +149,8 @@ def retry(
             strategy=effective_strategy,
             strategies=strategies,
             sleep=sleep,
+            before_sleep=cast(BeforeSleepHook | None, before_sleep),
+            sleeper=cast(SleeperFn | None, sleeper),
             deadline_s=deadline_s,
             max_attempts=max_attempts,
             max_unknown_attempts=max_unknown_attempts,

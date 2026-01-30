@@ -1,9 +1,15 @@
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from ..config import ResultClassifierFn, RetryConfig
 from ..errors import ErrorClass
-from ..sleep import SleepFn
+from ..sleep import (
+    AsyncBeforeSleepHook,
+    AsyncSleeperFn,
+    BeforeSleepHook,
+    SleeperFn,
+    SleepFn,
+)
 from ..strategies import StrategyFn
 from .container import AsyncPolicy, Policy
 from .retry import AsyncRetry, Retry
@@ -32,6 +38,8 @@ class RetryPolicy:
         strategy: StrategyFn | None = None,
         strategies: Mapping[ErrorClass, StrategyFn] | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         deadline_s: float = 60.0,
         max_attempts: int = 6,
         max_unknown_attempts: int | None = 2,
@@ -44,6 +52,8 @@ class RetryPolicy:
                 strategy=strategy,
                 strategies=strategies,
                 sleep=sleep,
+                before_sleep=before_sleep,
+                sleeper=sleeper,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -67,6 +77,8 @@ class RetryPolicy:
             strategy=config.default_strategy,
             strategies=config.class_strategies,
             sleep=config.sleep,
+            before_sleep=cast(BeforeSleepHook | None, config.before_sleep),
+            sleeper=cast(SleeperFn | None, config.sleeper),
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,
@@ -93,6 +105,8 @@ class RetryPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> Any:
@@ -103,6 +117,8 @@ class RetryPolicy:
             operation=operation,
             abort_if=abort_if,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
         )
@@ -116,6 +132,8 @@ class RetryPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
         capture_timeline: bool | RetryTimeline | None = None,
@@ -127,6 +145,8 @@ class RetryPolicy:
             operation=operation,
             abort_if=abort_if,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
             capture_timeline=capture_timeline,
@@ -140,6 +160,8 @@ class RetryPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | None = None,
+        sleeper: SleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> Any:
@@ -149,6 +171,8 @@ class RetryPolicy:
             operation=operation,
             abort_if=abort_if,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
         )
@@ -182,6 +206,8 @@ class AsyncRetryPolicy:
         strategy: StrategyFn | None = None,
         strategies: Mapping[ErrorClass, StrategyFn] | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+        sleeper: SleeperFn | AsyncSleeperFn | None = None,
         deadline_s: float = 60.0,
         max_attempts: int = 6,
         max_unknown_attempts: int | None = 2,
@@ -194,6 +220,8 @@ class AsyncRetryPolicy:
                 strategy=strategy,
                 strategies=strategies,
                 sleep=sleep,
+                before_sleep=before_sleep,
+                sleeper=sleeper,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -217,6 +245,8 @@ class AsyncRetryPolicy:
             strategy=config.default_strategy,
             strategies=config.class_strategies,
             sleep=config.sleep,
+            before_sleep=config.before_sleep,
+            sleeper=config.sleeper,
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,
@@ -243,6 +273,8 @@ class AsyncRetryPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+        sleeper: SleeperFn | AsyncSleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> T:
@@ -253,6 +285,8 @@ class AsyncRetryPolicy:
             operation=operation,
             abort_if=abort_if,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
         )
@@ -266,6 +300,8 @@ class AsyncRetryPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+        sleeper: SleeperFn | AsyncSleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
         capture_timeline: bool | RetryTimeline | None = None,
@@ -277,6 +313,8 @@ class AsyncRetryPolicy:
             operation=operation,
             abort_if=abort_if,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
             capture_timeline=capture_timeline,
@@ -290,6 +328,8 @@ class AsyncRetryPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+        sleeper: SleeperFn | AsyncSleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> Any:
@@ -299,6 +339,8 @@ class AsyncRetryPolicy:
             operation=operation,
             abort_if=abort_if,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
         )

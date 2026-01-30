@@ -93,6 +93,26 @@ if outcome.stop_reason is StopReason.SCHEDULED:
     ...
 ```
 
+If you only need a side-effect right before sleeping (metrics/logging), use
+`before_sleep` instead of a custom `sleep` handler.
+
+```python
+def before_sleep(ctx, sleep_s: float) -> None:
+    log_retry_delay(ctx.attempt, ctx.classification.klass, sleep_s)
+
+policy.execute(do_work, before_sleep=before_sleep)
+```
+
+If you want to keep the built-in retry decisions but replace the actual sleep
+(e.g., deterministic tests or a custom scheduler), pass a `sleeper`.
+
+```python
+def fake_sleep(seconds: float) -> None:
+    record_sleep(seconds)
+
+policy.execute(do_work, sleeper=fake_sleep)
+```
+
 ## Classification context & context-aware strategies
 
 Classifiers may return `Classification` to pass hints like Retry-After. The retry

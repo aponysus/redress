@@ -571,11 +571,15 @@ def test_policy_sleep_handler_defers_execute(monkeypatch: pytest.MonkeyPatch) ->
 
     sleep_calls: list[float] = []
     contexts: list[BackoffContext] = []
+    before_calls: list[tuple[ErrorClass, float]] = []
 
     def sleep_fn(ctx: BackoffContext, sleep_s: float) -> SleepDecision:
         contexts.append(ctx)
         sleep_calls.append(sleep_s)
         return SleepDecision.DEFER
+
+    def before_sleep(ctx: BackoffContext, sleep_s: float) -> None:
+        before_calls.append((ctx.classification.klass, sleep_s))
 
     def fail_sleep(_: float) -> None:
         raise AssertionError("sleep should not be called for DEFER")
@@ -590,12 +594,13 @@ def test_policy_sleep_handler_defers_execute(monkeypatch: pytest.MonkeyPatch) ->
         max_attempts=3,
     )
 
-    outcome = policy.execute(func, on_metric=metric_hook, sleep=sleep_fn)
+    outcome = policy.execute(func, on_metric=metric_hook, sleep=sleep_fn, before_sleep=before_sleep)
     assert outcome.ok is False
     assert outcome.stop_reason == StopReason.SCHEDULED
     assert outcome.next_sleep_s == 1.5
     assert sleep_calls == [1.5]
     assert contexts[0].classification.klass is ErrorClass.TRANSIENT
+    assert before_calls == []
 
     scheduled = next(event for event in events if event[0] == EventName.SCHEDULED.value)
     assert scheduled[3]["stop_reason"] == StopReason.SCHEDULED.value
@@ -687,6 +692,69 @@ def test_policy_sleep_handler_sleeps_and_retries(monkeypatch: pytest.MonkeyPatch
     assert sleeps == [0.2]
 
 
+def test_policy_custom_sleeper_used(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+    sleep_calls: list[float] = []
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return "ok"
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def sleeper(seconds: float) -> None:
+        sleep_calls.append(seconds)
+
+    def fail_sleep(_: float) -> None:
+        raise AssertionError("time.sleep should not be called")
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", fail_sleep)
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=lambda ctx: 0.2,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    result = policy.call(func, sleeper=sleeper)
+    assert result == "ok"
+    assert sleep_calls == [0.2]
+
+
+def test_policy_before_sleep_hook_called(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+    before_calls: list[tuple[ErrorClass, float]] = []
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("boom")
+        return "ok"
+
+    def classifier(_: BaseException) -> ErrorClass:
+        return ErrorClass.TRANSIENT
+
+    def before_sleep(ctx: BackoffContext, sleep_s: float) -> None:
+        before_calls.append((ctx.classification.klass, sleep_s))
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda _: None)
+
+    policy = RetryPolicy(
+        classifier=classifier,
+        strategy=lambda ctx: 0.2,
+        deadline_s=5.0,
+        max_attempts=3,
+    )
+
+    result = policy.call(func, before_sleep=before_sleep)
+    assert result == "ok"
+    assert before_calls == [(ErrorClass.TRANSIENT, 0.2)]
+
+
 def test_sleep_handler_missing_context_raises() -> None:
     policy = RetryPolicy(
         classifier=default_classifier,
@@ -708,6 +776,8 @@ def test_sleep_handler_missing_context_raises() -> None:
             attempt=1,
             decision=decision,
             sleep_fn=lambda ctx, sleep_s: SleepDecision.SLEEP,
+            before_sleep=None,
+            sleeper=None,
         )
 
 

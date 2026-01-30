@@ -1,6 +1,6 @@
 from collections.abc import Awaitable, Callable
 
-from ...sleep import SleepFn
+from ...sleep import AsyncBeforeSleepHook, AsyncSleeperFn, BeforeSleepHook, SleeperFn, SleepFn
 from ..base import _BaseRetryPolicy
 from ..types import (
     AbortPredicate,
@@ -23,6 +23,8 @@ async def run_async_call(
     operation: str | None,
     abort_if: AbortPredicate | None,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+    sleeper: SleeperFn | AsyncSleeperFn | None,
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
 ) -> T:
@@ -34,6 +36,8 @@ async def run_async_call(
         operation=operation,
         abort_if=abort_if,
         sleep_fn=sleep_fn,
+        before_sleep=before_sleep,
+        sleeper=sleeper,
         attempt_start_hook=attempt_start_hook,
         attempt_end_hook=attempt_end_hook,
     )
@@ -48,6 +52,8 @@ async def run_async_execute(
     operation: str | None,
     abort_if: AbortPredicate | None,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+    sleeper: SleeperFn | AsyncSleeperFn | None,
     attempt_start_hook: AttemptHook | None,
     attempt_end_hook: AttemptHook | None,
     capture_timeline: bool | RetryTimeline | None,
@@ -60,6 +66,8 @@ async def run_async_execute(
         operation=operation,
         abort_if=abort_if,
         sleep_fn=sleep_fn,
+        before_sleep=before_sleep,
+        sleeper=sleeper,
         attempt_start_hook=attempt_start_hook,
         attempt_end_hook=attempt_end_hook,
         capture_timeline=capture_timeline,

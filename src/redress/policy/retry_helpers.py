@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -6,7 +7,15 @@ from typing import Any
 from ..classify import Classification
 from ..errors import StopReason
 from ..events import EventName
-from ..sleep import SleepDecision, SleepFn
+from ..sleep import (
+    AsyncBeforeSleepHook,
+    AsyncSleeperFn,
+    BeforeSleepHook,
+    SleepDecision,
+    SleeperFn,
+    SleepFn,
+)
+from ..strategies import BackoffContext
 from .state import _RetryDecision, _RetryState
 from .types import (
     AttemptContext,
@@ -79,6 +88,20 @@ def _abort_outcome(
 
 def _resolve_sleep(policy_sleep: SleepFn | None, call_sleep: SleepFn | None) -> SleepFn | None:
     return call_sleep if call_sleep is not None else policy_sleep
+
+
+def _resolve_before_sleep(
+    policy_before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+    call_before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+) -> BeforeSleepHook | AsyncBeforeSleepHook | None:
+    return call_before_sleep if call_before_sleep is not None else policy_before_sleep
+
+
+def _resolve_sleeper(
+    policy_sleeper: SleeperFn | AsyncSleeperFn | None,
+    call_sleeper: SleeperFn | AsyncSleeperFn | None,
+) -> SleeperFn | AsyncSleeperFn | None:
+    return call_sleeper if call_sleeper is not None else policy_sleeper
 
 
 def _resolve_attempt_hooks(
@@ -274,6 +297,8 @@ def _sync_failure_outcome(
     result: Any | None,
     cause: FailureCause | None,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | None,
+    sleeper: SleeperFn | None,
 ) -> _AttemptOutcome:
     if decision.action == "raise":
         return _finalize_attempt(
@@ -292,6 +317,8 @@ def _sync_failure_outcome(
         attempt=attempt,
         decision=decision,
         sleep_fn=sleep_fn,
+        before_sleep=before_sleep,
+        sleeper=sleeper,
     )
     return _finalize_attempt(
         state=state,
@@ -315,6 +342,8 @@ async def _async_failure_outcome(
     result: Any | None,
     cause: FailureCause | None,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+    sleeper: SleeperFn | AsyncSleeperFn | None,
 ) -> _AttemptOutcome:
     if decision.action == "raise":
         return _finalize_attempt(
@@ -333,6 +362,8 @@ async def _async_failure_outcome(
         attempt=attempt,
         decision=decision,
         sleep_fn=sleep_fn,
+        before_sleep=before_sleep,
+        sleeper=sleeper,
     )
     return _finalize_attempt(
         state=state,
@@ -396,13 +427,20 @@ def _sync_sleep_action(
     attempt: int,
     decision: _RetryDecision,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | None,
+    sleeper: SleeperFn | None,
 ) -> SleepDecision:
     """Execute sync sleep and handle sleep decision."""
+    ctx = decision.context
+    sleep_impl = sleeper or time.sleep
     if sleep_fn is None:
-        time.sleep(decision.sleep_s)
+        if before_sleep is not None:
+            if ctx is None:
+                raise RuntimeError("Missing BackoffContext for before_sleep hook.")
+            _call_before_sleep(before_sleep, ctx, decision.sleep_s)
+        sleep_impl(decision.sleep_s)
         return SleepDecision.SLEEP
 
-    ctx = decision.context
     if ctx is None:
         raise RuntimeError("Missing BackoffContext for sleep decision.")
 
@@ -410,7 +448,9 @@ def _sync_sleep_action(
     result = _handle_sleep_decision(action, state, attempt, decision)
 
     if result is SleepDecision.SLEEP:
-        time.sleep(decision.sleep_s)
+        if before_sleep is not None:
+            _call_before_sleep(before_sleep, ctx, decision.sleep_s)
+        sleep_impl(decision.sleep_s)
 
     return result
 
@@ -421,13 +461,20 @@ async def _async_sleep_action(
     attempt: int,
     decision: _RetryDecision,
     sleep_fn: SleepFn | None,
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+    sleeper: SleeperFn | AsyncSleeperFn | None,
 ) -> SleepDecision:
     """Execute async sleep and handle sleep decision."""
+    ctx = decision.context
+    sleep_impl = sleeper or asyncio.sleep
     if sleep_fn is None:
-        await asyncio.sleep(decision.sleep_s)
+        if before_sleep is not None:
+            if ctx is None:
+                raise RuntimeError("Missing BackoffContext for before_sleep hook.")
+            await _call_before_sleep_async(before_sleep, ctx, decision.sleep_s)
+        await _call_async_sleeper(sleep_impl, decision.sleep_s)
         return SleepDecision.SLEEP
 
-    ctx = decision.context
     if ctx is None:
         raise RuntimeError("Missing BackoffContext for sleep decision.")
 
@@ -435,6 +482,37 @@ async def _async_sleep_action(
     result = _handle_sleep_decision(action, state, attempt, decision)
 
     if result is SleepDecision.SLEEP:
-        await asyncio.sleep(decision.sleep_s)
+        if before_sleep is not None:
+            await _call_before_sleep_async(before_sleep, ctx, decision.sleep_s)
+        await _call_async_sleeper(sleep_impl, decision.sleep_s)
 
     return result
+
+
+def _call_before_sleep(hook: BeforeSleepHook, ctx: BackoffContext, sleep_s: float) -> None:
+    try:
+        hook(ctx, sleep_s)
+    except Exception:
+        pass
+
+
+async def _call_before_sleep_async(
+    hook: BeforeSleepHook | AsyncBeforeSleepHook,
+    ctx: BackoffContext,
+    sleep_s: float,
+) -> None:
+    try:
+        result = hook(ctx, sleep_s)
+        if inspect.isawaitable(result):
+            await result
+    except Exception:
+        pass
+
+
+async def _call_async_sleeper(
+    sleeper: SleeperFn | AsyncSleeperFn,
+    sleep_s: float,
+) -> None:
+    result = sleeper(sleep_s)
+    if inspect.isawaitable(result):
+        await result

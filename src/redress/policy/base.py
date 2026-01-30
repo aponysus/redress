@@ -4,7 +4,7 @@ from datetime import timedelta
 from ..classify import Classification
 from ..config import ResultClassifierFn
 from ..errors import ErrorClass
-from ..sleep import SleepFn
+from ..sleep import AsyncBeforeSleepHook, AsyncSleeperFn, BeforeSleepHook, SleeperFn, SleepFn
 from ..strategies import BackoffFn, StrategyFn, _normalize_strategy
 from .types import ClassifierFn
 
@@ -18,6 +18,8 @@ class _BaseRetryPolicy:
         strategy: StrategyFn | None = None,
         strategies: Mapping[ErrorClass, StrategyFn] | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+        sleeper: SleeperFn | AsyncSleeperFn | None = None,
         deadline_s: float = 60.0,
         max_attempts: int = 6,
         max_unknown_attempts: int | None = 2,
@@ -37,6 +39,8 @@ class _BaseRetryPolicy:
             _normalize_strategy(strategy) if strategy is not None else None
         )
         self.sleep: SleepFn | None = sleep
+        self.before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = before_sleep
+        self.sleeper: SleeperFn | AsyncSleeperFn | None = sleeper
         self.deadline: timedelta = timedelta(seconds=deadline_s)
         self.max_attempts: int = max_attempts
         self.max_unknown_attempts: int | None = max_unknown_attempts

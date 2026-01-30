@@ -15,7 +15,13 @@ from ..errors import (
     RetryExhaustedError,
     StopReason,
 )
-from ..sleep import SleepFn
+from ..sleep import (
+    AsyncBeforeSleepHook,
+    AsyncSleeperFn,
+    BeforeSleepHook,
+    SleeperFn,
+    SleepFn,
+)
 from .context import _AsyncPolicyContext
 from .execution import (
     ExecutionContext,
@@ -67,6 +73,8 @@ class AsyncPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+        sleeper: SleeperFn | AsyncSleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> T:
@@ -90,6 +98,8 @@ class AsyncPolicy:
                     operation=operation,
                     abort_if=abort_if,
                     sleep=sleep,
+                    before_sleep=before_sleep,
+                    sleeper=sleeper,
                     on_attempt_start=on_attempt_start,
                     on_attempt_end=on_attempt_end,
                 )
@@ -201,6 +211,8 @@ class AsyncPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+        sleeper: SleeperFn | AsyncSleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
         capture_timeline: bool | RetryTimeline | None = None,
@@ -228,6 +240,8 @@ class AsyncPolicy:
                 operation,
                 abort_if,
                 sleep,
+                before_sleep,
+                sleeper,
                 on_attempt_start,
                 on_attempt_end,
                 capture_timeline,
@@ -245,6 +259,8 @@ class AsyncPolicy:
         operation: str | None,
         abort_if: AbortPredicate | None,
         sleep: SleepFn | None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None,
+        sleeper: SleeperFn | AsyncSleeperFn | None,
         on_attempt_start: AttemptHook | None,
         on_attempt_end: AttemptHook | None,
         capture_timeline: bool | RetryTimeline | None,
@@ -259,6 +275,8 @@ class AsyncPolicy:
             operation=operation,
             abort_if=abort_if,
             sleep=sleep,
+            before_sleep=before_sleep,
+            sleeper=sleeper,
             on_attempt_start=on_attempt_start,
             on_attempt_end=on_attempt_end,
             capture_timeline=capture_timeline,
@@ -351,6 +369,8 @@ class AsyncPolicy:
         operation: str | None = None,
         abort_if: AbortPredicate | None = None,
         sleep: SleepFn | None = None,
+        before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
+        sleeper: SleeperFn | AsyncSleeperFn | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> _AsyncPolicyContext:
@@ -364,6 +384,8 @@ class AsyncPolicy:
             operation,
             abort_if,
             sleep,
+            before_sleep,
+            sleeper,
             on_attempt_start,
             on_attempt_end,
         )

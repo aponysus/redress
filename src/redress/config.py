@@ -4,7 +4,7 @@ from typing import Any
 
 from .classify import Classification
 from .errors import ErrorClass
-from .sleep import SleepFn
+from .sleep import AsyncBeforeSleepHook, AsyncSleeperFn, BeforeSleepHook, SleeperFn, SleepFn
 from .strategies import StrategyFn
 
 ResultClassifierFn = Callable[[Any], ErrorClass | Classification | None]
@@ -21,6 +21,8 @@ class RetryConfig:
     class_strategies: Mapping[ErrorClass, StrategyFn] | None = None
     result_classifier: ResultClassifierFn | None = None
     sleep: SleepFn | None = None
+    before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None
+    sleeper: SleeperFn | AsyncSleeperFn | None = None
 
     def per_class_limits(self) -> dict[ErrorClass, int]:
         """

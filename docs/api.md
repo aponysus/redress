@@ -72,3 +72,6 @@
 ## Sleep handlers
 
 - `SleepDecision` enum (`sleep`, `defer`, `abort`)
+- `SleepFn` for custom sleep handling (decide sleep/defer/abort)
+- `BeforeSleepHook` / `AsyncBeforeSleepHook` run right before an actual sleep
+- `SleeperFn` / `AsyncSleeperFn` replace the actual sleep call
