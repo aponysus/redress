@@ -18,7 +18,11 @@ def redis_classifier(exc: BaseException) -> ErrorClass:
         return default_classifier(exc)
 
     readonly_exc = getattr(redis_exc, "ReadOnlyError", None)
-    if readonly_exc is not None and isinstance(readonly_exc, type) and isinstance(exc, readonly_exc):
+    if (
+        readonly_exc is not None
+        and isinstance(readonly_exc, type)
+        and isinstance(exc, readonly_exc)
+    ):
         return ErrorClass.CONCURRENCY
 
     auth_exc = getattr(redis_exc, "AuthenticationError", None)

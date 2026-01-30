@@ -30,7 +30,11 @@ def grpc_classifier(exc: BaseException) -> ErrorClass:
         status = code() if callable(code) else None
         return _map_grpc_status(grpc_mod, status)
 
-    if aio_rpc_error is not None and isinstance(aio_rpc_error, type) and isinstance(exc, aio_rpc_error):
+    if (
+        aio_rpc_error is not None
+        and isinstance(aio_rpc_error, type)
+        and isinstance(exc, aio_rpc_error)
+    ):
         code = getattr(exc, "code", None)
         status = code() if callable(code) else None
         return _map_grpc_status(grpc_mod, status)

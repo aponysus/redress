@@ -19,7 +19,11 @@ def aiohttp_classifier(exc: BaseException) -> ErrorClass:
         return default_classifier(exc)
 
     response_exc = getattr(aiohttp_exc, "ClientResponseError", None)
-    if response_exc is not None and isinstance(response_exc, type) and isinstance(exc, response_exc):
+    if (
+        response_exc is not None
+        and isinstance(response_exc, type)
+        and isinstance(exc, response_exc)
+    ):
         return http_classifier(exc)
 
     transient_types = tuple(
