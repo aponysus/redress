@@ -8,8 +8,8 @@ Run with:
 
 import asyncio
 import threading
+from collections.abc import Mapping
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import Mapping
 
 import httpx
 
@@ -145,16 +145,7 @@ def print_outcome(
     last_exc = type(outcome.last_exception).__name__ if outcome.last_exception is not None else "-"
     print(f"\n=== {label} ===")
     print(
-        "ok={ok} status={status} attempts={attempts} stop_reason={stop} last_class={klass} last_exc={exc} elapsed_s={elapsed:.3f} breaker={breaker}".format(
-            ok=outcome.ok,
-            status=status,
-            attempts=outcome.attempts,
-            stop=stop_reason,
-            klass=last_class,
-            exc=last_exc,
-            elapsed=outcome.elapsed_s,
-            breaker=breaker_state,
-        )
+        f"ok={outcome.ok} status={status} attempts={outcome.attempts} stop_reason={stop_reason} last_class={last_class} last_exc={last_exc} elapsed_s={outcome.elapsed_s:.3f} breaker={breaker_state}"
     )
     print_timeline(timeline)
 
@@ -168,7 +159,9 @@ async def run_case(policy: AsyncPolicy, client: httpx.AsyncClient, path: str, la
     outcome = await policy.execute(
         call, operation=label, capture_timeline=timeline, on_log=log_event
     )
-    breaker_state = policy.circuit_breaker.state.value if policy.circuit_breaker is not None else "-"
+    breaker_state = (
+        policy.circuit_breaker.state.value if policy.circuit_breaker is not None else "-"
+    )
     print_outcome(label, outcome, breaker_state, timeline)
 
 

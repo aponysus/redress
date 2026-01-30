@@ -1,14 +1,9 @@
-"""
-Example pyodbc-aware classifier for redress.
-
-Maps common SQLSTATE/driver codes to ErrorClass without importing pyodbc as a dependency.
-Adapt the mappings to your environment (SQL Server/Postgres) and driver behaviors.
-"""
+"""Optional pyodbc-style classifier (dependency-free)."""
 
 import re
 from collections.abc import Iterable
 
-from redress.errors import ErrorClass
+from ..errors import ErrorClass
 
 _SQLSTATE_RE = re.compile(r"\[([0-9A-Z]{5})\]")
 
