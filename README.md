@@ -9,9 +9,9 @@
 
 > redress (v.): to remedy or to set right.
 
-redress is a failure-policy library for Python services.
+Policy-driven failure handling for Python services.
 
-It treats retries, circuit breakers, and stop conditions as coordinated responses to classified failure, rather than independent wrappers. The goal is to make failure behavior explicit, bounded, and observable across a codebase.
+redress treats retries, circuit breakers, and stop conditions as coordinated responses to classified failure—making failure behavior explicit, bounded, and observable.
 
 ## Why redress?
 
