@@ -67,6 +67,7 @@ policy = RetryPolicy(
 ```
 
 Per-class limit semantics:
+
 - `0` = no retries for that class (stop on first failure)
 - `1` = one retry (two total attempts for that class)
 - `2` = two retries (three total attempts for that class)
