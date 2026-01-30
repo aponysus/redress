@@ -37,6 +37,7 @@ policy = Policy(
 **Circuit breaking.** Policies can open a circuit after repeated failures, failing fast instead of piling up retries. Retries and circuit breakers are treated as policy responses to classified failure, not separate mechanisms.
 
 **Sync/async symmetry.** `Policy` and `AsyncPolicy` share the same API and configuration; `RetryPolicy` / `AsyncRetryPolicy` remain convenient shortcuts.
+**Optional classifiers.** Extras for common libraries (aiohttp, grpc, boto3, redis, urllib3, pyodbc).
 
 
 ## Documentation
@@ -138,6 +139,8 @@ asyncio.run(async_policy.call(flaky_async))
 ## Error Classes & Classification
 
 ```
+AUTH
+PERMISSION
 PERMANENT
 CONCURRENCY
 RATE_LIMIT

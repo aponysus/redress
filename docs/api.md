@@ -28,9 +28,10 @@
 
 - `default_classifier`
 - `strict_classifier`
-- `http_classifier`, `sqlstate_classifier`, `pyodbc_classifier` (contrib)
+- `http_classifier`, `http_retry_after_classifier`
+- `sqlstate_classifier`, `pyodbc_classifier`
+- Optional extras: `aiohttp_classifier`, `grpc_classifier`, `boto3_classifier`, `redis_classifier`, `urllib3_classifier`
 - `Classification` dataclass for structured classifier outputs
-- `http_retry_after_classifier` for Retry-After extraction
 
 ## Strategies
 

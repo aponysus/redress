@@ -19,9 +19,9 @@ from collections.abc import Iterable, Iterator, Sequence
 
 import pyodbc
 
-from docs.snippets.pyodbc_classifier import pyodbc_classifier
 from redress import RetryPolicy
 from redress.errors import ErrorClass
+from redress.extras import pyodbc_classifier
 from redress.strategies import decorrelated_jitter
 
 

@@ -342,6 +342,38 @@ except AbortRetryError:
 
 - `http_classifier` – maps HTTP status codes (e.g., 429→RATE_LIMIT, 500→SERVER_ERROR, 408→TRANSIENT).
 - `sqlstate_classifier` – maps SQLSTATE codes (e.g., 40001/40P01→CONCURRENCY, HYT00/08xxx→TRANSIENT, 28xxx→AUTH).
+- `urllib3_classifier` – maps urllib3 transport errors and HTTP status codes.
+- `redis_classifier` – maps redis-py connection/auth errors.
+- `aiohttp_classifier` – maps aiohttp client errors and HTTP status codes.
+- `grpc_classifier` – maps gRPC status codes to ErrorClass.
+- `boto3_classifier` – maps botocore ClientError codes and AWS transport errors.
+
+Optional classifiers are shipped as extras:
+
+- `redress[urllib3]`
+- `redress[redis]`
+- `redress[aiohttp]`
+- `redress[grpc]`
+- `redress[boto3]`
+
+### Optional classifier example
+
+Available classifiers (extras): `urllib3_classifier`, `redis_classifier`, `aiohttp_classifier`,
+`grpc_classifier`, `boto3_classifier`, `pyodbc_classifier`. All are used the same way—pass them as
+the policy classifier.
+
+```python
+from redress import RetryPolicy
+from redress.extras import urllib3_classifier
+from redress.strategies import decorrelated_jitter
+
+policy = RetryPolicy(
+    classifier=urllib3_classifier,
+    strategy=decorrelated_jitter(max_s=3.0),
+)
+```
+
+Swap in any of the other optional classifiers above as needed.
 
 `default_classifier` includes name-based heuristics for convenience. If you want more predictable
 behavior, use `strict_classifier` (same logic without name heuristics) or supply your own
@@ -349,12 +381,12 @@ domain-specific classifier.
 
 ## PyODBC classification example
 
-`redress` stays dependency-free, so database-specific classifiers live in docs. See `docs/snippets/pyodbc_classifier.py` for a SQLSTATE-based mapper.
+`redress` stays dependency-free, so database-specific classifiers live in extras. Use `pyodbc_classifier` for a SQLSTATE-based mapper.
 
 ```python
 from redress import retry
 from redress.strategies import decorrelated_jitter
-from docs.snippets.pyodbc_classifier import pyodbc_classifier  # adjust import path as needed
+from redress.extras import pyodbc_classifier
 
 @retry(
     classifier=pyodbc_classifier,

@@ -27,7 +27,7 @@ Classifiers map exceptions → `ErrorClass` or `Classification`:
 - `http_classifier` maps HTTP status codes (429→RATE_LIMIT, 5xx→SERVER_ERROR, 408→TRANSIENT, 401/403 → AUTH/PERMISSION).
 - `http_retry_after_classifier` behaves like `http_classifier` but populates `retry_after_s` when present.
 - `sqlstate_classifier` maps SQLSTATE codes (40001/40P01→CONCURRENCY, HYT00/08xxx→TRANSIENT, 28xxx→AUTH).
-- `pyodbc_classifier` (contrib) reuses SQLSTATE mapping for pyodbc-like errors.
+- `pyodbc_classifier` (extras) reuses SQLSTATE mapping for pyodbc-like errors.
 
 Default classifier precedence (first match wins):
 

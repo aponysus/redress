@@ -1,7 +1,6 @@
 from .circuit import CircuitBreaker, CircuitState
 from .classify import Classification, default_classifier, strict_classifier
 from .config import RetryConfig
-from .contrib.pyodbc import pyodbc_classifier
 from .errors import (
     AbortRetry,
     AbortRetryError,
@@ -15,7 +14,17 @@ from .errors import (
     StopReason,
 )
 from .events import EventName
-from .extras import http_classifier, http_retry_after_classifier, sqlstate_classifier
+from .extras import (
+    aiohttp_classifier,
+    boto3_classifier,
+    grpc_classifier,
+    http_classifier,
+    http_retry_after_classifier,
+    pyodbc_classifier,
+    redis_classifier,
+    sqlstate_classifier,
+    urllib3_classifier,
+)
 from .metrics import otel_metric_hook, prometheus_metric_hook
 from .policy import (
     AsyncPolicy,
@@ -75,6 +84,11 @@ __all__ = [
     "token_backoff",
     "retry_after_or",
     "default_classifier",
+    "aiohttp_classifier",
+    "boto3_classifier",
+    "grpc_classifier",
+    "redis_classifier",
+    "urllib3_classifier",
     "Classification",
     "strict_classifier",
     "BackoffContext",

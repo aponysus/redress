@@ -24,6 +24,12 @@
 - Same shape as sync, with `AsyncRetryPolicy` and `httpx.AsyncClient`.
 - Run: `uv pip install httpx` then `uv run python docs/snippets/httpx_async_retry.py`.
 
+## HTTPX async + Policy + circuit breaker
+
+- Snippet: `docs/snippets/httpx_async_policy_breaker.py`
+- Unified `AsyncPolicy` demo with Retry-After result retries and circuit breaking.
+- Run: `uv pip install httpx` then `uv run python docs/snippets/httpx_async_policy_breaker.py`.
+
 ## Async worker loop
 
 - Snippet: `docs/snippets/async_worker_retry.py`
@@ -44,7 +50,7 @@
 
 ## PyODBC + SQLSTATE classifier
 
-- Snippet: `docs/snippets/pyodbc_classifier.py` provides a SQLSTATE→ErrorClass mapper (also available as `sqlstate_classifier` in `redress.extras`).
+- Classifier: `pyodbc_classifier` (in `redress.extras`) maps SQLSTATE codes to ErrorClass.
 - Snippet: `docs/snippets/pyodbc_retry.py` shows batched row fetch under retry.
 - Run: `uv pip install pyodbc` and set `PYODBC_CONN_STR`, then `uv run python docs/snippets/pyodbc_retry.py`.
 

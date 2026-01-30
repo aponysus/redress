@@ -3,13 +3,20 @@
 from datetime import UTC, datetime, timedelta
 from email.utils import format_datetime
 
+import pytest
+
 from redress.classify import Classification, default_classifier
 from redress.errors import ErrorClass
 from redress.extras import (
     _parse_retry_after,
+    aiohttp_classifier,
+    boto3_classifier,
+    grpc_classifier,
     http_classifier,
     http_retry_after_classifier,
+    redis_classifier,
     sqlstate_classifier,
+    urllib3_classifier,
 )
 
 
@@ -89,6 +96,208 @@ def test_http_classifier_unknown_falls_back() -> None:
             self.status_code = 777
 
     assert http_classifier(HttpError()) is ErrorClass.UNKNOWN
+
+
+def test_urllib3_classifier_mappings() -> None:
+    pytest.importorskip("urllib3")
+    from urllib3 import exceptions as urllib3_exc
+
+    if getattr(urllib3_exc, "ReadTimeoutError", None) is not None:
+
+        class FakeReadTimeoutError(urllib3_exc.ReadTimeoutError):
+            def __init__(self) -> None:
+                Exception.__init__(self, "timeout")
+
+        assert urllib3_classifier(FakeReadTimeoutError()) is ErrorClass.TRANSIENT
+
+    redirects_exc = getattr(urllib3_exc, "TooManyRedirects", None)
+    if redirects_exc is not None:
+
+        class FakeTooManyRedirects(redirects_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "redirects")
+
+        assert urllib3_classifier(FakeTooManyRedirects()) is ErrorClass.PERMANENT
+
+    ssl_exc = getattr(urllib3_exc, "SSLError", None)
+    if ssl_exc is not None:
+
+        class FakeSSLError(ssl_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "ssl")
+
+        assert urllib3_classifier(FakeSSLError()) is ErrorClass.UNKNOWN
+
+    class FakeHttpStatus(urllib3_exc.HTTPError):
+        def __init__(self) -> None:
+            Exception.__init__(self, "status")
+            self.status = 429
+
+    assert urllib3_classifier(FakeHttpStatus()) is ErrorClass.RATE_LIMIT
+
+
+def test_redis_classifier_mappings() -> None:
+    pytest.importorskip("redis")
+    from redis import exceptions as redis_exc
+
+    timeout_exc = getattr(redis_exc, "TimeoutError", None)
+    if timeout_exc is not None:
+
+        class FakeTimeout(timeout_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "timeout")
+
+        assert redis_classifier(FakeTimeout()) is ErrorClass.TRANSIENT
+
+    connection_exc = getattr(redis_exc, "ConnectionError", None)
+    if connection_exc is not None:
+
+        class FakeConnection(connection_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "conn")
+
+        assert redis_classifier(FakeConnection()) is ErrorClass.TRANSIENT
+
+    busy_exc = getattr(redis_exc, "BusyLoadingError", None)
+    if busy_exc is not None:
+
+        class FakeBusy(busy_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "busy")
+
+        assert redis_classifier(FakeBusy()) is ErrorClass.TRANSIENT
+
+    readonly_exc = getattr(redis_exc, "ReadOnlyError", None)
+    if readonly_exc is not None:
+
+        class FakeReadonly(readonly_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "readonly")
+
+        assert redis_classifier(FakeReadonly()) is ErrorClass.CONCURRENCY
+
+    auth_exc = getattr(redis_exc, "AuthenticationError", None)
+    if auth_exc is not None:
+
+        class FakeAuth(auth_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "auth")
+
+        assert redis_classifier(FakeAuth()) is ErrorClass.AUTH
+
+    perm_exc = getattr(redis_exc, "AuthorizationError", None)
+    if perm_exc is not None:
+
+        class FakePerm(perm_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "perm")
+
+        assert redis_classifier(FakePerm()) is ErrorClass.PERMISSION
+
+
+def test_aiohttp_classifier_mappings() -> None:
+    pytest.importorskip("aiohttp")
+    from aiohttp import client_exceptions as aiohttp_exc
+
+    conn_exc = getattr(aiohttp_exc, "ClientConnectionError", None)
+    if conn_exc is not None:
+
+        class FakeConnection(conn_exc):
+            def __init__(self) -> None:
+                Exception.__init__(self, "conn")
+
+        assert aiohttp_classifier(FakeConnection()) is ErrorClass.TRANSIENT
+
+    resp_exc = getattr(aiohttp_exc, "ClientResponseError", None)
+    if resp_exc is not None:
+        fake_resp = None
+        try:
+
+            class FakeResponse(resp_exc):
+                def __init__(self) -> None:
+                    Exception.__init__(self, "resp")
+                    self.status = 429
+
+            fake_resp = FakeResponse()
+        except Exception:
+            fake_resp = None
+
+        if fake_resp is not None:
+            assert aiohttp_classifier(fake_resp) is ErrorClass.RATE_LIMIT
+
+
+def test_grpc_classifier_mappings() -> None:
+    pytest.importorskip("grpc")
+    import grpc
+
+    class FakeRpcError(grpc.RpcError):
+        def __init__(self, status: grpc.StatusCode) -> None:
+            super().__init__()
+            self._status = status
+
+        def code(self) -> grpc.StatusCode:
+            return self._status
+
+    assert (
+        grpc_classifier(FakeRpcError(grpc.StatusCode.RESOURCE_EXHAUSTED)) is ErrorClass.RATE_LIMIT
+    )
+    assert grpc_classifier(FakeRpcError(grpc.StatusCode.UNAVAILABLE)) is ErrorClass.TRANSIENT
+    assert grpc_classifier(FakeRpcError(grpc.StatusCode.UNAUTHENTICATED)) is ErrorClass.AUTH
+    assert grpc_classifier(FakeRpcError(grpc.StatusCode.PERMISSION_DENIED)) is ErrorClass.PERMISSION
+    assert grpc_classifier(FakeRpcError(grpc.StatusCode.INTERNAL)) is ErrorClass.SERVER_ERROR
+
+
+def test_boto3_classifier_mappings() -> None:
+    pytest.importorskip("botocore")
+    from botocore.exceptions import ClientError, EndpointConnectionError
+
+    endpoint_error = EndpointConnectionError(endpoint_url="https://example.com")
+    assert boto3_classifier(endpoint_error) is ErrorClass.TRANSIENT
+
+    throttling_error = ClientError(
+        {
+            "Error": {"Code": "Throttling", "Message": "slow down"},
+            "ResponseMetadata": {"HTTPStatusCode": 400},
+        },
+        "ListTables",
+    )
+    assert boto3_classifier(throttling_error) is ErrorClass.RATE_LIMIT
+
+    perm_error = ClientError(
+        {
+            "Error": {"Code": "AccessDenied", "Message": "nope"},
+            "ResponseMetadata": {"HTTPStatusCode": 403},
+        },
+        "ListTables",
+    )
+    assert boto3_classifier(perm_error) is ErrorClass.PERMISSION
+
+    auth_error = ClientError(
+        {
+            "Error": {"Code": "InvalidClientTokenId", "Message": "bad token"},
+            "ResponseMetadata": {"HTTPStatusCode": 401},
+        },
+        "ListTables",
+    )
+    assert boto3_classifier(auth_error) is ErrorClass.AUTH
+
+    server_error = ClientError(
+        {
+            "Error": {"Code": "InternalError", "Message": "boom"},
+            "ResponseMetadata": {"HTTPStatusCode": 503},
+        },
+        "ListTables",
+    )
+    assert boto3_classifier(server_error) is ErrorClass.SERVER_ERROR
+
+    permanent_error = ClientError(
+        {
+            "Error": {"Code": "ResourceNotFoundException", "Message": "missing"},
+            "ResponseMetadata": {"HTTPStatusCode": 404},
+        },
+        "ListTables",
+    )
+    assert boto3_classifier(permanent_error) is ErrorClass.PERMANENT
 
 
 def test_http_retry_after_classifier_seconds() -> None:
