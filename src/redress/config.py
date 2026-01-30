@@ -2,6 +2,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from .budget import Budget
 from .classify import Classification
 from .errors import ErrorClass
 from .sleep import AsyncBeforeSleepHook, AsyncSleeperFn, BeforeSleepHook, SleeperFn, SleepFn
@@ -23,6 +24,7 @@ class RetryConfig:
     sleep: SleepFn | None = None
     before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None
     sleeper: SleeperFn | AsyncSleeperFn | None = None
+    budget: Budget | None = None
 
     def per_class_limits(self) -> dict[ErrorClass, int]:
         """

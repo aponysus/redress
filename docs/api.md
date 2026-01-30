@@ -17,6 +17,9 @@
   - State machine with open/half-open/closed transitions
   - Use with `Policy(circuit_breaker=...)`
 - `CircuitState` enum
+## Budgets
+
+- `Budget(max_retries, window_s)` for shared retry limits across policies
 
 ## Decorator
 

@@ -3,6 +3,7 @@ import functools
 from collections.abc import Callable, Mapping
 from typing import cast, overload
 
+from ..budget import Budget
 from ..classify import default_classifier
 from ..config import ResultClassifierFn
 from ..errors import ErrorClass
@@ -29,6 +30,7 @@ def retry(
     sleep: SleepFn | None = ...,
     before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = ...,
     sleeper: SleeperFn | AsyncSleeperFn | None = ...,
+    budget: Budget | None = ...,
     deadline_s: float = ...,
     max_attempts: int = ...,
     max_unknown_attempts: int | None = ...,
@@ -53,6 +55,7 @@ def retry(
     sleep: SleepFn | None = ...,
     before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = ...,
     sleeper: SleeperFn | AsyncSleeperFn | None = ...,
+    budget: Budget | None = ...,
     deadline_s: float = ...,
     max_attempts: int = ...,
     max_unknown_attempts: int | None = ...,
@@ -76,6 +79,7 @@ def retry(
     sleep: SleepFn | None = None,
     before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
     sleeper: SleeperFn | AsyncSleeperFn | None = None,
+    budget: Budget | None = None,
     deadline_s: float = 60.0,
     max_attempts: int = 6,
     max_unknown_attempts: int | None = 2,
@@ -122,6 +126,7 @@ def retry(
                 sleep=sleep,
                 before_sleep=before_sleep,
                 sleeper=sleeper,
+                budget=budget,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -151,6 +156,7 @@ def retry(
             sleep=sleep,
             before_sleep=cast(BeforeSleepHook | None, before_sleep),
             sleeper=cast(SleeperFn | None, sleeper),
+            budget=budget,
             deadline_s=deadline_s,
             max_attempts=max_attempts,
             max_unknown_attempts=max_unknown_attempts,

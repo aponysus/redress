@@ -1,5 +1,6 @@
 from collections.abc import Awaitable, Callable, Mapping
 
+from ..budget import Budget
 from ..config import ResultClassifierFn, RetryConfig
 from ..errors import ErrorClass
 from ..sleep import AsyncBeforeSleepHook, AsyncSleeperFn, BeforeSleepHook, SleeperFn, SleepFn
@@ -40,6 +41,7 @@ class AsyncRetry(_BaseRetryPolicy):
         sleep: SleepFn | None = None,
         before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
         sleeper: SleeperFn | AsyncSleeperFn | None = None,
+        budget: Budget | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
         deadline_s: float = 60.0,
@@ -55,6 +57,7 @@ class AsyncRetry(_BaseRetryPolicy):
             sleep=sleep,
             before_sleep=before_sleep,
             sleeper=sleeper,
+            budget=budget,
             deadline_s=deadline_s,
             max_attempts=max_attempts,
             max_unknown_attempts=max_unknown_attempts,
@@ -81,6 +84,7 @@ class AsyncRetry(_BaseRetryPolicy):
             sleep=config.sleep,
             before_sleep=config.before_sleep,
             sleeper=config.sleeper,
+            budget=config.budget,
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,

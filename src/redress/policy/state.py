@@ -300,6 +300,20 @@ class _RetryState:
 
         sleep_s = max(0.0, sleep_s)
         sleep_s = min(sleep_s, remaining_s)
+
+        if self.policy.budget is not None and not self.policy.budget.consume():
+            self.last_stop_reason = StopReason.BUDGET_EXHAUSTED
+            self.emit(
+                EventName.BUDGET_EXHAUSTED.value,
+                attempt,
+                0.0,
+                klass,
+                exc,
+                stop_reason=StopReason.BUDGET_EXHAUSTED,
+                cause=cause,
+            )
+            return _RetryDecision("raise")
+
         self.prev_sleep = sleep_s
         self.emit(
             EventName.RETRY.value,

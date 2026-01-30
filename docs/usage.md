@@ -71,6 +71,25 @@ Per-class limit semantics:
 - `1` = one retry (two total attempts for that class)
 - `2` = two retries (three total attempts for that class)
 
+## Retry budgets
+
+Use a shared budget to cap retry volume across operations or policies.
+
+```python
+from redress import Budget, RetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
+
+budget = Budget(max_retries=100, window_s=60.0)
+
+policy = RetryPolicy(
+    classifier=default_classifier,
+    strategy=decorrelated_jitter(max_s=5.0),
+    budget=budget,
+)
+```
+
+When the budget is exhausted, retries stop with `StopReason.BUDGET_EXHAUSTED`.
+
 ## Pluggable sleep handler (defer instead of sleeping)
 
 Use a sleep handler to persist retry timing and exit the loop without blocking.

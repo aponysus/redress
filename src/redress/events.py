@@ -11,6 +11,7 @@ class EventName(str, Enum):
     MAX_ATTEMPTS_EXCEEDED = "max_attempts_exceeded"
     MAX_UNKNOWN_ATTEMPTS_EXCEEDED = "max_unknown_attempts_exceeded"
     NO_STRATEGY_CONFIGURED = "no_strategy_configured"
+    BUDGET_EXHAUSTED = "budget_exhausted"
     SCHEDULED = "scheduled"
     ABORTED = "aborted"
     CIRCUIT_OPENED = "circuit_opened"

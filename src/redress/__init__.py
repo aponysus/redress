@@ -1,3 +1,4 @@
+from .budget import Budget
 from .circuit import CircuitBreaker, CircuitState
 from .classify import Classification, default_classifier, strict_classifier
 from .config import RetryConfig
@@ -70,6 +71,7 @@ __all__ = [
     "AsyncBeforeSleepHook",
     "SleeperFn",
     "AsyncSleeperFn",
+    "Budget",
     "AttemptContext",
     "AttemptDecision",
     "AttemptHook",

@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from redress import SleepDecision
+from redress import Budget, SleepDecision
 from redress.circuit import CircuitBreaker, CircuitState
 from redress.classify import Classification, default_classifier
 from redress.errors import (
@@ -442,6 +442,26 @@ def test_async_policy_custom_sleeper_used(monkeypatch: pytest.MonkeyPatch) -> No
     result = asyncio.run(policy.call(func, sleeper=sleeper))
     assert result == "ok"
     assert sleep_calls == [0.3]
+
+
+def test_async_policy_budget_exhausted_execute() -> None:
+    async def func() -> None:
+        raise RuntimeError("boom")
+
+    budget = Budget(max_retries=1, window_s=60.0)
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=5.0,
+        max_attempts=5,
+        budget=budget,
+    )
+
+    outcome = asyncio.run(policy.execute(func, capture_timeline=True))
+    assert outcome.stop_reason is StopReason.BUDGET_EXHAUSTED
+    assert outcome.attempts == 2
+    assert outcome.timeline is not None
+    assert any(event.event == EventName.BUDGET_EXHAUSTED.value for event in outcome.timeline.events)
 
 
 def test_async_policy_before_sleep_hook_called(monkeypatch: pytest.MonkeyPatch) -> None:

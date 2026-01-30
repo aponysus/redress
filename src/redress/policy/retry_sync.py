@@ -1,6 +1,7 @@
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 
+from ..budget import Budget
 from ..config import ResultClassifierFn, RetryConfig
 from ..errors import ErrorClass
 from ..sleep import BeforeSleepHook, SleeperFn, SleepFn
@@ -97,6 +98,7 @@ class Retry(_BaseRetryPolicy):
         sleep: SleepFn | None = None,
         before_sleep: BeforeSleepHook | None = None,
         sleeper: SleeperFn | None = None,
+        budget: Budget | None = None,
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
         deadline_s: float = 60.0,
@@ -112,6 +114,7 @@ class Retry(_BaseRetryPolicy):
             sleep=sleep,
             before_sleep=before_sleep,
             sleeper=sleeper,
+            budget=budget,
             deadline_s=deadline_s,
             max_attempts=max_attempts,
             max_unknown_attempts=max_unknown_attempts,
@@ -138,6 +141,7 @@ class Retry(_BaseRetryPolicy):
             sleep=config.sleep,
             before_sleep=cast(BeforeSleepHook | None, config.before_sleep),
             sleeper=cast(SleeperFn | None, config.sleeper),
+            budget=config.budget,
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,
@@ -184,6 +188,7 @@ class Retry(_BaseRetryPolicy):
               * "deadline_exceeded"    – wall-clock deadline exceeded
               * "retry"                – a retry is scheduled
               * "no_strategy_configured" – missing strategy for a retryable class
+              * "budget_exhausted"     – retry budget exhausted
               * "max_attempts_exceeded"– we hit max_attempts and re-raise with
                 the original traceback
               * "max_unknown_attempts_exceeded" – UNKNOWN cap hit

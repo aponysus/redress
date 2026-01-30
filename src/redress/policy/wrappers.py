@@ -1,6 +1,7 @@
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, cast
 
+from ..budget import Budget
 from ..config import ResultClassifierFn, RetryConfig
 from ..errors import ErrorClass
 from ..sleep import (
@@ -40,6 +41,7 @@ class RetryPolicy:
         sleep: SleepFn | None = None,
         before_sleep: BeforeSleepHook | None = None,
         sleeper: SleeperFn | None = None,
+        budget: Budget | None = None,
         deadline_s: float = 60.0,
         max_attempts: int = 6,
         max_unknown_attempts: int | None = 2,
@@ -54,6 +56,7 @@ class RetryPolicy:
                 sleep=sleep,
                 before_sleep=before_sleep,
                 sleeper=sleeper,
+                budget=budget,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -79,6 +82,7 @@ class RetryPolicy:
             sleep=config.sleep,
             before_sleep=cast(BeforeSleepHook | None, config.before_sleep),
             sleeper=cast(SleeperFn | None, config.sleeper),
+            budget=config.budget,
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,
@@ -208,6 +212,7 @@ class AsyncRetryPolicy:
         sleep: SleepFn | None = None,
         before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
         sleeper: SleeperFn | AsyncSleeperFn | None = None,
+        budget: Budget | None = None,
         deadline_s: float = 60.0,
         max_attempts: int = 6,
         max_unknown_attempts: int | None = 2,
@@ -222,6 +227,7 @@ class AsyncRetryPolicy:
                 sleep=sleep,
                 before_sleep=before_sleep,
                 sleeper=sleeper,
+                budget=budget,
                 deadline_s=deadline_s,
                 max_attempts=max_attempts,
                 max_unknown_attempts=max_unknown_attempts,
@@ -247,6 +253,7 @@ class AsyncRetryPolicy:
             sleep=config.sleep,
             before_sleep=config.before_sleep,
             sleeper=config.sleeper,
+            budget=config.budget,
             deadline_s=config.deadline_s,
             max_attempts=config.max_attempts,
             max_unknown_attempts=config.max_unknown_attempts,
