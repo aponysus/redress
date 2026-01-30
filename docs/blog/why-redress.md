@@ -1,254 +1,189 @@
-# Why Naive Retry Logic Fails (and How Redress Tries to Fix It)
+# Why Failure Handling Should Be Policy (and Why Redress Exists)
 
-Most of the time, retry logic gets added at the last minute:
+Most systems don't *design* failure handling. They accumulate it:
 
-- “Wrap it in a decorator.”
-- “Give it exponential backoff.”
-- “Try five times then give up.”
+- "wrap it in a retry decorator"
+- "add exponential backoff"
+- "some endpoints should fail fast"
 
-It works in dev. It mostly works in staging. Then production hits, a dependency starts flaking, and those “simple retries” suddenly turn a small blip into a full incident.
+Then you discover you're operating a distributed system with a pile of inconsistent, implicit rules.
 
-The core problem: **naive retries treat all failures the same**. Real systems don’t.
-
-This post walks through how I ended up designing **redress** the way I did: error classification, per-class strategies, and an observability hook instead of a big generic “retry until it works” hammer.
+**Redress is a failure-policy layer:** classify failures once, then apply consistent retries, caps, breaker decisions, and telemetry across a codebase. It's drop-in, sync/async-consistent, and bounded by default.
 
 ---
 
-# 1. A simple retry isn’t enough
+## 1. The core idea: classify, then respond
 
-The easiest way to use redress is the `@retry` decorator:
+Before you decide "retry or not," you need to decide:
+
+> **What kind of failure is this?**
+
+Redress classifies failures into a small, fixed set of semantic error classes:
+
+- `PERMANENT`
+- `CONCURRENCY`
+- `RATE_LIMIT`
+- `SERVER_ERROR`
+- `TRANSIENT`
+- `UNKNOWN`
+
+This set is intentionally coarse. The goal isn't perfect diagnosis. The goal is to separate failures that should behave differently:
+
+- rate limits should back off slowly
+- transient blips can retry quickly
+- unknown failures should be tightly capped
+- some failures should never be retried
+
+Classification is the shared substrate for everything else.
+
+---
+
+## 2. A unified policy, not a pile of wrappers
+
+Redress centers on a unified `Policy` container:
 
 ```python
-from redress import retry
-
-@retry  # uses default_classifier + decorrelated_jitter(max_s=5.0)
-def fetch_user(user_id: str):
-    ...
-```
-
-With **no arguments**, this does a few things for you:
-
-- Uses `default_classifier` to map exceptions into coarse error classes.
-- Uses `decorrelated_jitter(max_s=5.0)` as the backoff strategy.
-
-This already avoids many pitfalls of naive retry loops.
-
----
-
-# 2. Error classes: not every failure is equal
-
-Redress works around a small set of coarse error classes:
-
-- **PERMANENT**
-- **CONCURRENCY**
-- **RATE_LIMIT**
-- **SERVER_ERROR**
-- **TRANSIENT**
-- **UNKNOWN**
-
-The default classifier does a best-effort mapping:
-
-- Looks for explicit redress error types.
-- Checks numeric codes like `err.status` or `err.code`.
-- Uses name heuristics for common DB/API error patterns.
-- Falls back to `UNKNOWN` if it can’t place it.
-
-The goal isn’t perfect diagnosis. It’s to separate:
-
-- “retry quickly”
-- “retry slowly”
-- “don’t retry at all”
-- “retry very few times if unknown”
-
-Even this coarse structure avoids a lot of self-inflicted pain.
-
----
-
-# 3. Using `RetryPolicy` directly
-
-For more control, you work with `RetryPolicy`:
-
-```python
-from redress.policy import RetryPolicy
-from redress.classify import default_classifier
+from redress import CircuitBreaker, ErrorClass, Policy, Retry, default_classifier
 from redress.strategies import decorrelated_jitter
 
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=10.0),
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=5.0),
+        deadline_s=60.0,
+        max_attempts=6,
+        strategies={
+            ErrorClass.RATE_LIMIT: decorrelated_jitter(max_s=60.0),
+            ErrorClass.TRANSIENT: decorrelated_jitter(max_s=1.0),
+        },
+    ),
+    circuit_breaker=CircuitBreaker(
+        failure_threshold=5,
+        window_s=60.0,
+        recovery_timeout_s=30.0,
+        trip_on={ErrorClass.SERVER_ERROR, ErrorClass.CONCURRENCY},
+    ),
 )
 
-def flaky():
-    ...
-
-result = policy.call(flaky)
+result = policy.call(lambda: do_work(), operation="fetch_user")
 ```
 
-This is the core: it wraps your function, runs it, and applies the retry envelope as needed.
+This is the point: **one model** where the same classification coordinates multiple failure responses.
+
+- retries are one response
+- circuit breaking is another
+- stop conditions are explicit and inspectable
+- observability uses the same lifecycle everywhere
 
 ---
 
-# 4. Per-class backoff strategies
+## 3. Why "retry libraries" tend to fail in production
 
-You probably want different behavior for:
+Most retry libraries are fine at the call-site ergonomics: decorators, backoff math, "try N times."
 
-- `CONCURRENCY` (e.g., DB deadlocks)
-- `RATE_LIMIT` (429s)
-- `SERVER_ERROR` (5xx)
+The failure modes show up later:
 
-Here's how to do that:
+### Treating all failures the same
 
-```python
-from redress.policy import RetryPolicy
-from redress.classify import default_classifier
-from redress.strategies import decorrelated_jitter, equal_jitter
-from redress.errors import ErrorClass
+Retrying rate limits like transient network errors turns a small event into a prolonged incident.
 
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=10.0),  # fallback
-    strategies={
-        ErrorClass.CONCURRENCY: decorrelated_jitter(max_s=1.0),
-        ErrorClass.RATE_LIMIT: decorrelated_jitter(max_s=60.0),
-        ErrorClass.SERVER_ERROR: equal_jitter(max_s=30.0),
-    },
-)
-```
+### Unbounded retry behavior
 
-Strategies support two signatures:
+Retries need deterministic envelopes: deadlines, max attempts, and caps for unknown failures. Without bounds, outages get amplified.
 
-```
-(ctx: BackoffContext) -> float
-```
+### Separate systems for retries and breakers
 
-Legacy `(attempt, error_class, prev_sleep)` strategies still work. Built-ins include
-`decorrelated_jitter`, `equal_jitter`, and `token_backoff`.
+If retries and circuit breakers don't share semantics and observability, they drift. You end up debugging "why did this fail fast?" as a separate universe from "why did this retry?"
+
+### Lack of stop reasons
+
+If you can't answer "why did we stop?" you can't operate the system effectively.
 
 ---
 
-# 5. Decorators with real configuration
+## 4. Backoff isn't one-size-fits-all
 
-`@retry` is just a thin wrapper around `RetryPolicy`:
+Once failures are classified, backoff becomes a policy decision instead of a single global knob.
 
-```python
-from redress import retry
-from redress.classify import default_classifier
-from redress.strategies import decorrelated_jitter
+Per-class strategies make intent explicit:
 
-@retry(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=3.0),
-)
-def fetch_user_fast_retry(user_id):
-    ...
-```
+- rate limits back off aggressively
+- transient blips retry quickly
+- concurrency errors can use short jitter to avoid thundering herds
 
-Or reuse a shared policy:
-
-```python
-from redress.policy import RetryPolicy
-
-shared_policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=3.0),
-)
-
-with shared_policy.context(operation="batch") as do_retry:
-    do_retry(fetch_user_fast_retry, "user-1")
-    do_retry(fetch_user_fast_retry, "user-2")
-```
-
-The context manager version is handy for batching operations under one retry envelope + observability context.
+That's the practical win of "classify, then dispatch."
 
 ---
 
-# 6. Deadlines, caps, and UNKNOWN protection
+## 5. Bounded behavior is non-negotiable
 
-A common reliability failure is endlessly retrying unknown errors.
+Redress is designed around deterministic envelopes:
 
-Redress lets you bound them:
+- `deadline_s` caps total time spent
+- `max_attempts` caps total tries
+- `max_unknown_attempts` prevents blind looping when classification is uncertain
+
+These aren't "nice to have." They're what prevent retry storms and mystery behavior.
+
+If you need to inspect *why* you stopped, use `execute()` and check the outcome:
 
 ```python
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(),
-    deadline_s=60,
-    max_attempts=8,
-    max_unknown_attempts=2,
-)
+outcome = policy.execute(do_work)
+print(outcome.stop_reason)  # ABORTED, DEADLINE_EXCEEDED, SCHEDULED, etc.
 ```
-
-This ensures mystery failures never run wild.
 
 ---
 
-# 7. Async retries without a separate mental model
+## 6. Observability is part of the contract
 
-Async support mirrors sync exactly:
+Retries and breakers hide behavior unless you surface it deliberately.
 
-```python
-from redress import AsyncRetryPolicy
-from redress.classify import default_classifier
-from redress.strategies import decorrelated_jitter
-
-async_policy = AsyncRetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),
-)
-
-async def flaky_async():
-    ...
-
-await async_policy.call(flaky_async)
-```
-
-No separate API, no special strategy types—just async versions of the same policies.
-
----
-
-# 8. Observability: simple, explicit hooks
-
-Retries hide a lot of behavior unless you surface it intentionally.
-
-Redress exposes one hook:
+Redress exposes a small, consistent set of lifecycle hooks (`on_metric`, `on_log`, and attempt hooks) so observability isn't scattered:
 
 ```python
 def metric_hook(event, attempt, sleep_s, tags):
     print(event, attempt, sleep_s, tags)
 
-policy.call(my_op, on_metric=metric_hook)
+policy.call(my_op, on_metric=metric_hook, operation="sync_op")
 ```
 
-You get structured events:
+The point isn't just that you *can* log. It's that the policy emits a coherent narrative:
 
-- `retry`
-- `success`
-- `permanent_fail`
-- `deadline_exceeded`
-- `max_attempts_exceeded`
-- `max_unknown_attempts_exceeded`
+- what was classified
+- what response was chosen
+- why it stopped
 
-With contextual tags (function name, operation, error class, etc.).  
-This is easy to wire into Prometheus, logging, tracing, or anything else.
+That's what makes failure handling operable.
 
 ---
 
-# 9. Why this matters
+## 7. Sync and async shouldn't be separate worlds
 
-Redress isn’t trying to out-feature other retry libraries.  
-It’s trying to make retry behavior:
+Failure handling is hard enough without a different mental model for asyncio.
 
-- **semantic** (via error classes)
-- **predictable** (per-class strategies)
-- **bounded** (deadlines & caps)
-- **visible** (single metric hook)
-- **for both sync and async** (identical mental model)
+Redress aims for sync/async symmetry: same policy shape, same semantics, async variants where needed.
 
-These small ingredients solve the most common operational problems:
-retry storms, hammering rate-limited APIs, and inconsistency across services.
+---
 
-If you want to explore more:
+## 8. What redress is (and is not)
 
-- GitHub: [https://github.com/aponysus/redress](https://github.com/aponysus/redress)
-- Docs: [https://aponysus.github.io/redress/](https://aponysus.github.io/redress/)
-- PyPI: [https://pypi.org/project/redress/](https://pypi.org/project/redress/)
+Redress is for engineers who want failure handling to be:
+
+- explicit
+- bounded
+- observable
+- consistent across a codebase
+
+It is not trying to be a workflow engine or a framework that owns your entire reliability stack.
+
+It's a library of failure-policy primitives that compose cleanly inside real services.
+
+---
+
+## Where to go next
+
+GitHub: https://github.com/aponysus/redress
+
+Docs: https://aponysus.github.io/redress/
+
+Getting started: https://aponysus.github.io/redress/getting-started/
