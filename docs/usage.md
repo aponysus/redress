@@ -5,6 +5,14 @@
 `Policy` is the unified resilience container. Configure retries via `Retry`,
 or use `RetryPolicy` as a convenient shortcut.
 
+Practical choice guide:
+
+| Use this | When you need |
+| --- | --- |
+| `Policy` | Combine retries with a circuit breaker (or other policy components). |
+| `RetryPolicy` | Retry-only behavior without composing a full `Policy`. |
+| `Retry` (component) | Embed retry settings inside `Policy` or custom containers. |
+
 ```python
 from redress import Policy, Retry, default_classifier
 from redress.strategies import decorrelated_jitter
@@ -46,9 +54,7 @@ policy = Policy(
 ## Per-class strategies and limits
 
 ```python
-from redress.policy import RetryPolicy
-from redress.errors import ErrorClass
-from redress.classify import default_classifier
+from redress import ErrorClass, RetryPolicy, default_classifier
 from redress.strategies import decorrelated_jitter, equal_jitter
 
 policy = RetryPolicy(
@@ -68,10 +74,11 @@ policy = RetryPolicy(
 
 Per-class limit semantics:
 
-- `0` = no retries for that class (stop on first failure)
-- `1` = one retry (two total attempts for that class)
-- `2` = two retries (three total attempts for that class)
+`per_class_max_attempts` is a cap on total attempts for that class (including the initial attempt, not just retries). For example, `limit=1` means only the first attempt is allowed for that class; retries will not occur.
 
+- `0` = no attempts for that class
+- `1` = one total attempt for that class
+- `2` = two total attempts for that class
 ## Retry budgets
 
 Use a shared budget to cap retry volume across operations or policies.
@@ -115,6 +122,9 @@ policy = RetryPolicy(
 ## Pluggable sleep handler (defer instead of sleeping)
 
 Use a sleep handler to persist retry timing and exit the loop without blocking.
+
+Returning `SleepDecision.ABORT` immediately ends retry execution and yields an
+`ABORTED` stop reason/event.
 
 ```python
 from redress import RetryPolicy, SleepDecision, StopReason, default_classifier
@@ -216,8 +226,7 @@ Use `result_classifier` to retry on return values instead of exceptions.
 
 ```python
 from redress import RetryPolicy
-from redress.classify import Classification, default_classifier
-from redress.errors import ErrorClass, RetryExhaustedError
+from redress import Classification, ErrorClass, RetryExhaustedError, default_classifier
 from redress.strategies import decorrelated_jitter, retry_after_or
 
 def result_classifier(resp) -> ErrorClass | Classification | None:
@@ -258,9 +267,7 @@ Metrics/logs include `operation=fetch_profile`, letting you split dashboards per
 ## RetryConfig for shared settings
 
 ```python
-from redress.config import RetryConfig
-from redress.policy import RetryPolicy
-from redress.classify import default_classifier
+from redress import ErrorClass, RetryConfig, RetryPolicy, default_classifier
 
 cfg = RetryConfig(
     deadline_s=45.0,
@@ -281,7 +288,7 @@ policy = RetryPolicy.from_config(cfg, classifier=default_classifier)
 ```python
 import asyncio
 from redress import AsyncRetryPolicy, default_classifier
-from redress.errors import ErrorClass
+from redress import ErrorClass
 from redress.strategies import decorrelated_jitter
 
 async_policy = AsyncRetryPolicy(

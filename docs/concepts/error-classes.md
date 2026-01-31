@@ -48,8 +48,7 @@ Classifiers may also return a `Classification` instead of a plain `ErrorClass`. 
 See `http_retry_after_classifier` for a built-in helper that extracts Retry-After hints.
 
 ```python
-from redress.classify import Classification
-from redress.errors import ErrorClass
+from redress import Classification, ErrorClass
 from redress.strategies import BackoffContext
 
 def classifier(exc: BaseException) -> Classification:

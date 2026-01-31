@@ -5,8 +5,7 @@ Minimal decorator-based retry examples (sync + async).
 import asyncio
 from collections.abc import Iterator
 
-from redress import retry
-from redress.classify import default_classifier
+from redress import default_classifier, retry
 from redress.strategies import decorrelated_jitter
 
 

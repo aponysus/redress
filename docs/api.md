@@ -4,18 +4,28 @@
 
 - `Policy`, `AsyncPolicy`
   - Unified resilience containers; use `Policy(retry=Retry(...))`
-  - `.call(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
-  - `.execute(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None, capture_timeline=False)`
-  - `.context(on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
+  - `.call(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None)`
+  - `.execute(func, on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None, capture_timeline=False)`
+  - `.context(on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None)`
 - `Retry`, `AsyncRetry`
   - Retry components with `result_classifier` support
   - Support per-attempt timeouts via `attempt_timeout_s`
-  - `.call(..., abort_if=None, sleep=None)`, `.execute(..., abort_if=None, sleep=None, capture_timeline=False)`, `.context(..., abort_if=None, sleep=None)`
+  - `.call(..., abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None)`
+  - `.execute(..., abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None, capture_timeline=False)`
+  - `.context(..., abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None)`
   - `.from_config(config, classifier=...)`
 - `RetryPolicy`, `AsyncRetryPolicy`
   - Backward-compatible sugar for `Policy(retry=Retry(...))`
+  - `.call(..., abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None)`
+  - `.execute(..., abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None, capture_timeline=False)`
+  - `.context(..., abort_if=None, sleep=None, before_sleep=None, sleeper=None, on_attempt_start=None, on_attempt_end=None)`
 - `CircuitBreaker`
   - State machine with open/half-open/closed transitions
+  - `failure_threshold=5` failures in `window_s=60.0` seconds to open
+  - `recovery_timeout_s=30.0` before half-open probe
+  - `trip_on` set of ErrorClass values that count (default: TRANSIENT, SERVER_ERROR)
+  - `class_thresholds` per-class override thresholds
+  - `clock` optional monotonic clock override
   - Use with `Policy(circuit_breaker=...)`
 - `CircuitState` enum
 ## Budgets
@@ -53,7 +63,7 @@
 - `StopReason` enum
 - `RetryExhaustedError` terminal error (result-based exhaustion)
 - `AbortRetryError` cooperative abort signal (alias: `AbortRetry`)
-- Marker exceptions: `PermanentError`, `RateLimitError`, `ConcurrencyError`
+- Marker exceptions: `PermanentError`, `RateLimitError`, `ConcurrencyError`, `ServerError`
 
 ## Outcomes
 

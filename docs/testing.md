@@ -64,6 +64,13 @@ assert policy.calls[-1].kwargs["operation"] == "demo"
 Use it to assert wrapper/decorator forwarding without a full metric/log spy
 setup (e.g., verify `operation`, `on_metric`, or `on_log` are passed through).
 
+## Record types
+
+`RecordingPolicy.calls` stores `CallRecord` entries and `.executions` stores `ExecuteRecord` entries:
+
+- `CallRecord(func, kwargs, result=None, exception=None)`
+- `ExecuteRecord(func, kwargs, outcome=None, exception=None)`
+
 ## FakePolicy
 
 Use a lightweight stub when you only need outcomes.

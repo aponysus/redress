@@ -10,8 +10,7 @@ from typing import Any
 
 import httpx
 
-from redress import RetryPolicy, default_classifier
-from redress.errors import ErrorClass
+from redress import ErrorClass, RetryPolicy, default_classifier
 from redress.strategies import decorrelated_jitter
 
 

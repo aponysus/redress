@@ -18,6 +18,18 @@ backoff, limits, and circuit breaker decisions.
 Use `result_classifier` when you want to retry on return values (HTTP responses,
 status codes, etc.) without raising exceptions.
 
+## Classification fields
+
+`Classification` carries the error class plus optional hints:
+
+```python
+@dataclass(frozen=True)
+class Classification:
+    klass: ErrorClass
+    retry_after_s: float | None = None
+    details: Mapping[str, str] = field(default_factory=dict)
+```
+
 ## Built-in classifiers
 
 Core:

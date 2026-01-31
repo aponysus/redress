@@ -34,7 +34,7 @@ rows = policy.call(lambda: run_query(conn), operation="db_query")
 
 ```python
 from redress import Policy, Retry
-from redress.errors import ErrorClass
+from redress import ErrorClass
 from redress.extras import sqlstate_classifier
 from redress.strategies import decorrelated_jitter, equal_jitter
 

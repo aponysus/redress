@@ -8,7 +8,7 @@ import signal
 import time
 
 from redress import Budget, RetryPolicy, default_classifier
-from redress.errors import StopReason
+from redress import StopReason
 from redress.strategies import decorrelated_jitter
 
 shutdown = {"now": False}

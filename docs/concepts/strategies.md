@@ -11,7 +11,7 @@ Strategies can use one of two signatures:
 - `classification` – structured `Classification` (retry hints, details)
 - `remaining_s` – deadline time remaining (seconds)
 - `prev_sleep_s` – previous sleep value
-- `cause` – `"exception"` for now (future result-based retries add `"result"`)
+- `cause` – `"exception"` or `"result"`, indicating whether the failure came from a raised exception or a classified return value
 
 Built-ins (all return a `StrategyFn`):
 
@@ -19,12 +19,12 @@ Built-ins (all return a `StrategyFn`):
 - `equal_jitter(base_s=0.25, max_s=30.0)` – exponential with jitter in `[cap/2, cap]`, `cap = min(max_s, base_s*2^attempt)`.
 - `token_backoff(base_s=0.25, max_s=20.0)` – gentler exponential (`1.5^attempt`) with jitter.
 - `retry_after_or(fallback, jitter_s=0.25)` – honors `Classification.retry_after_s` when present, otherwise calls `fallback`.
+- `adaptive(fallback, window_s=60.0, target_success=0.9, min_multiplier=1.0, max_multiplier=5.0)` – wraps a fallback strategy with adaptive scaling based on recent success/failure rate (thread-safe).
 
 Example:
 
 ```python
-from redress import RetryPolicy, default_classifier
-from redress.errors import ErrorClass
+from redress import ErrorClass, RetryPolicy, default_classifier
 from redress.strategies import decorrelated_jitter, equal_jitter
 
 policy = RetryPolicy(

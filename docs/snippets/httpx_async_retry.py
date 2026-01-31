@@ -11,8 +11,7 @@ from typing import Any
 
 import httpx
 
-from redress import AsyncRetryPolicy, default_classifier
-from redress.errors import ErrorClass
+from redress import AsyncRetryPolicy, ErrorClass, default_classifier
 from redress.strategies import decorrelated_jitter
 
 

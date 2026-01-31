@@ -201,6 +201,7 @@ Built‑ins:
 - `equal_jitter()`
 - `token_backoff()`
 - `retry_after_or(...)`
+- `adaptive(...)`
 
 ## Per-Class Example
 
