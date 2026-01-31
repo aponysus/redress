@@ -2,6 +2,7 @@
 
 
 import importlib
+import time
 import traceback
 from typing import Any
 
@@ -772,6 +773,25 @@ def test_policy_budget_shared_across_policies() -> None:
     assert outcome_one.attempts == 2
     assert outcome_two.stop_reason is StopReason.BUDGET_EXHAUSTED
     assert outcome_two.attempts == 1
+
+
+def test_policy_attempt_timeout_execute() -> None:
+    def func() -> str:
+        time.sleep(0.05)
+        return "ok"
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=1.0,
+        max_attempts=1,
+        attempt_timeout_s=0.01,
+    )
+
+    outcome = policy.execute(func)
+    assert outcome.stop_reason is StopReason.MAX_ATTEMPTS_GLOBAL
+    assert isinstance(outcome.last_exception, TimeoutError)
+    assert outcome.last_class is ErrorClass.TRANSIENT
 
 
 def test_policy_before_sleep_hook_called(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -53,6 +53,10 @@ def test_strict_classifier_ignores_connection_name() -> None:
     assert strict_classifier(ConnectionResetError()) is ErrorClass.UNKNOWN
 
 
+def test_strict_classifier_timeout_error_is_transient() -> None:
+    assert strict_classifier(TimeoutError()) is ErrorClass.TRANSIENT
+
+
 def test_strict_classifier_uses_status_codes() -> None:
     class AuthStatusError(Exception):
         status = 401

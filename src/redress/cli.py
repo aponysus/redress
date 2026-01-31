@@ -15,6 +15,7 @@ from .strategies import StrategyFn
 class _ConfigView:
     source: str
     deadline_s: float
+    attempt_timeout_s: float | None
     max_attempts: int
     max_unknown_attempts: int | None
     per_class_max_attempts: Mapping[Any, int] | None
@@ -29,6 +30,7 @@ def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
         return _ConfigView(
             source=source,
             deadline_s=obj.deadline_s,
+            attempt_timeout_s=obj.attempt_timeout_s,
             max_attempts=obj.max_attempts,
             max_unknown_attempts=obj.max_unknown_attempts,
             per_class_max_attempts=obj.per_class_max_attempts,
@@ -48,6 +50,7 @@ def _config_view_from_obj(obj: object, *, source: str) -> _ConfigView:
         return _ConfigView(
             source=source,
             deadline_s=obj.deadline.total_seconds(),
+            attempt_timeout_s=obj.attempt_timeout_s,
             max_attempts=obj.max_attempts,
             max_unknown_attempts=obj.max_unknown_attempts,
             per_class_max_attempts=obj.per_class_max_attempts,
@@ -69,6 +72,18 @@ def _lint_config_view(cfg: _ConfigView) -> tuple[list[str], list[str]]:
 
     if cfg.deadline_s <= 0:
         errors.append(f"[{cfg.source}] deadline_s must be > 0 (got {cfg.deadline_s!r})")
+
+    if cfg.attempt_timeout_s is not None and cfg.attempt_timeout_s <= 0:
+        errors.append(
+            f"[{cfg.source}] attempt_timeout_s must be > 0 or None "
+            f"(got {cfg.attempt_timeout_s!r})"
+        )
+
+    if cfg.attempt_timeout_s is not None and cfg.attempt_timeout_s >= cfg.deadline_s:
+        warnings.append(
+            f"[{cfg.source}] attempt_timeout_s ({cfg.attempt_timeout_s}) is >= "
+            f"deadline_s ({cfg.deadline_s}); retries may have no time to run."
+        )
 
     if cfg.max_attempts < 1:
         errors.append(f"[{cfg.source}] max_attempts must be >= 1 (got {cfg.max_attempts!r})")
@@ -150,6 +165,7 @@ def _print_snapshot(view: _ConfigView) -> None:
     print("Config snapshot:")
     print(f"  source: {view.source}")
     print(f"  deadline_s: {view.deadline_s}")
+    print(f"  attempt_timeout_s: {view.attempt_timeout_s}")
     print(f"  max_attempts: {view.max_attempts}")
     print(f"  max_unknown_attempts: {view.max_unknown_attempts}")
     print(f"  default_strategy: {_format_strategy(view.default_strategy)}")

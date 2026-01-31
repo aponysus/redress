@@ -9,6 +9,7 @@
   - `.context(on_metric=None, on_log=None, operation=None, abort_if=None, sleep=None)`
 - `Retry`, `AsyncRetry`
   - Retry components with `result_classifier` support
+  - Support per-attempt timeouts via `attempt_timeout_s`
   - `.call(..., abort_if=None, sleep=None)`, `.execute(..., abort_if=None, sleep=None, capture_timeline=False)`, `.context(..., abort_if=None, sleep=None)`
   - `.from_config(config, classifier=...)`
 - `RetryPolicy`, `AsyncRetryPolicy`

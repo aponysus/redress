@@ -22,6 +22,7 @@ class _BaseRetryPolicy:
         before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = None,
         sleeper: SleeperFn | AsyncSleeperFn | None = None,
         budget: Budget | None = None,
+        attempt_timeout_s: float | None = None,
         deadline_s: float = 60.0,
         max_attempts: int = 6,
         max_unknown_attempts: int | None = 2,
@@ -31,6 +32,8 @@ class _BaseRetryPolicy:
             raise ValueError(
                 "Retry requires either a default 'strategy' or a 'strategies' mapping (or both)."
             )
+        if attempt_timeout_s is not None and attempt_timeout_s <= 0:
+            raise ValueError("attempt_timeout_s must be > 0 or None.")
 
         self.classifier: ClassifierFn = classifier
         self.result_classifier: ResultClassifierFn | None = result_classifier
@@ -44,6 +47,7 @@ class _BaseRetryPolicy:
         self.before_sleep: BeforeSleepHook | AsyncBeforeSleepHook | None = before_sleep
         self.sleeper: SleeperFn | AsyncSleeperFn | None = sleeper
         self.budget: Budget | None = budget
+        self.attempt_timeout_s: float | None = attempt_timeout_s
         self.deadline: timedelta = timedelta(seconds=deadline_s)
         self.max_attempts: int = max_attempts
         self.max_unknown_attempts: int | None = max_unknown_attempts

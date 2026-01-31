@@ -14,6 +14,7 @@ ResultClassifierFn = Callable[[Any], ErrorClass | Classification | None]
 @dataclass
 class RetryConfig:
     deadline_s: float = 60.0
+    attempt_timeout_s: float | None = None
     max_attempts: int = 6
     max_unknown_attempts: int | None = 2
     per_class_max_attempts: Mapping[ErrorClass, int] | None = None

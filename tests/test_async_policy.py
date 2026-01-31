@@ -464,6 +464,25 @@ def test_async_policy_budget_exhausted_execute() -> None:
     assert any(event.event == EventName.BUDGET_EXHAUSTED.value for event in outcome.timeline.events)
 
 
+def test_async_policy_attempt_timeout_execute() -> None:
+    async def func() -> str:
+        await asyncio.sleep(0.05)
+        return "ok"
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        strategy=_no_sleep_strategy,
+        deadline_s=1.0,
+        max_attempts=1,
+        attempt_timeout_s=0.01,
+    )
+
+    outcome = asyncio.run(policy.execute(func))
+    assert outcome.stop_reason is StopReason.MAX_ATTEMPTS_GLOBAL
+    assert isinstance(outcome.last_exception, TimeoutError)
+    assert outcome.last_class is ErrorClass.TRANSIENT
+
+
 def test_async_policy_before_sleep_hook_called(monkeypatch: pytest.MonkeyPatch) -> None:
     calls = {"n": 0}
     before_calls: list[tuple[ErrorClass, float]] = []

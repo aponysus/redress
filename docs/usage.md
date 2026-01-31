@@ -91,6 +91,19 @@ policy = RetryPolicy(
 
 When the budget is exhausted, retries stop with `StopReason.BUDGET_EXHAUSTED`.
 
+## Per-attempt timeouts
+
+Set a per-attempt timeout to bound each call, independently of the overall deadline.
+
+```python
+policy = RetryPolicy(
+    classifier=default_classifier,
+    strategy=decorrelated_jitter(max_s=5.0),
+    attempt_timeout_s=2.0,
+    deadline_s=30.0,
+)
+```
+
 ## Pluggable sleep handler (defer instead of sleeping)
 
 Use a sleep handler to persist retry timing and exit the loop without blocking.

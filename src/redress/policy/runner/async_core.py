@@ -121,6 +121,7 @@ async def _run_async_call(
         operation=operation,
         abort_if=abort_if,
     )
+    attempt_timeout_s = policy.attempt_timeout_s
 
     for attempt in range(1, policy.max_attempts + 1):
         attempt_state = AttemptState()
@@ -130,7 +131,10 @@ async def _run_async_call(
         attempt_state.started = True
 
         try:
-            result = await func()
+            if attempt_timeout_s is None:
+                result = await func()
+            else:
+                result = await asyncio.wait_for(func(), timeout=attempt_timeout_s)
         except AbortRetryError as exc:
             _handle_abort_attempt_end(attempt_end_hook, state, attempt, attempt_state, exc)
             handle_abort_in_call(state, attempt)
@@ -255,6 +259,7 @@ async def _run_async_execute(
         abort_if=abort_if,
     )
     attempts = 0
+    attempt_timeout_s = policy.attempt_timeout_s
 
     for attempt in range(1, policy.max_attempts + 1):
         attempt_state = AttemptState()
@@ -265,7 +270,10 @@ async def _run_async_execute(
             attempt_state.started = True
             attempts = attempt
 
-            result = await func()
+            if attempt_timeout_s is None:
+                result = await func()
+            else:
+                result = await asyncio.wait_for(func(), timeout=attempt_timeout_s)
 
             # Success path: check if result needs classification
             needs_retry, classification = should_classify_result(policy, result)

@@ -18,6 +18,8 @@ class Classification:
 
 
 def _classify(err: BaseException, *, use_name_heuristics: bool) -> ErrorClass:
+    if isinstance(err, TimeoutError):
+        return ErrorClass.TRANSIENT
     if isinstance(err, PermanentError):
         return ErrorClass.PERMANENT
     if isinstance(err, RateLimitError):

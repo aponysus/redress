@@ -7,6 +7,8 @@ logic.py for decision-making while keeping I/O operations (func calls, sleep) he
 
 import asyncio
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import Any, cast
 
 from ...errors import AbortRetryError, RetryExhaustedError, StopReason
@@ -45,6 +47,20 @@ from .logic import (
     should_classify_result,
 )
 from .timeline import _resolve_timeline
+
+
+def _call_with_timeout(func: Callable[[], T], timeout_s: float) -> T:
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(func)
+    try:
+        return future.result(timeout=timeout_s)
+    except FutureTimeoutError as exc:
+        future.cancel()
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise TimeoutError(f"Attempt exceeded {timeout_s} seconds.") from exc
+    finally:
+        if future.done():
+            executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _handle_abort_attempt_end(
@@ -115,6 +131,7 @@ def _run_sync_call(
         operation=operation,
         abort_if=abort_if,
     )
+    attempt_timeout_s = policy.attempt_timeout_s
 
     for attempt in range(1, policy.max_attempts + 1):
         attempt_state = AttemptState()
@@ -124,7 +141,10 @@ def _run_sync_call(
         attempt_state.started = True
 
         try:
-            result = func()
+            if attempt_timeout_s is None:
+                result = func()
+            else:
+                result = _call_with_timeout(func, attempt_timeout_s)
         except AbortRetryError as exc:
             _handle_abort_attempt_end(attempt_end_hook, state, attempt, attempt_state, exc)
             handle_abort_in_call(state, attempt)
@@ -249,6 +269,7 @@ def _run_sync_execute(
         abort_if=abort_if,
     )
     attempts = 0
+    attempt_timeout_s = policy.attempt_timeout_s
 
     for attempt in range(1, policy.max_attempts + 1):
         attempt_state = AttemptState()
@@ -259,7 +280,10 @@ def _run_sync_execute(
             attempt_state.started = True
             attempts = attempt
 
-            result = func()
+            if attempt_timeout_s is None:
+                result = func()
+            else:
+                result = _call_with_timeout(func, attempt_timeout_s)
 
             # Success path: check if result needs classification
             needs_retry, classification = should_classify_result(policy, result)
