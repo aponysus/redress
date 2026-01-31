@@ -8,12 +8,9 @@ import pytest
 
 from redress import retry
 from redress.errors import ErrorClass, RateLimitError
+from redress.testing import instant_retries
 
 _retry_mod = importlib.import_module("redress.policy.retry_helpers")
-
-
-def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:
-    return 0.0
 
 
 def test_retry_decorator_sync(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -26,7 +23,7 @@ def test_retry_decorator_sync(monkeypatch: pytest.MonkeyPatch) -> None:
 
     @retry(
         classifier=lambda exc: ErrorClass.TRANSIENT,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         on_metric=metric,
     )
     def flaky() -> str:
@@ -62,7 +59,7 @@ def test_retry_decorator_async(monkeypatch: pytest.MonkeyPatch) -> None:
 
     @retry(
         classifier=lambda exc: ErrorClass.TRANSIENT,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         on_metric=metric,
     )
     async def flaky_async() -> str:
@@ -105,7 +102,7 @@ def test_retry_decorator_respects_strategy_mapping_only(monkeypatch: pytest.Monk
     @retry(
         classifier=lambda exc: ErrorClass.TRANSIENT,
         strategy=None,
-        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        strategies={ErrorClass.RATE_LIMIT: instant_retries},
         max_attempts=3,
     )
     def flaky() -> str:

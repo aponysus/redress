@@ -79,3 +79,11 @@
 - `SleepFn` for custom sleep handling (decide sleep/defer/abort)
 - `BeforeSleepHook` / `AsyncBeforeSleepHook` run right before an actual sleep
 - `SleeperFn` / `AsyncSleeperFn` replace the actual sleep call
+
+## Testing utilities
+
+Available under `redress.testing`:
+
+- `DeterministicStrategy`, `instant_retries`, `no_retries`
+- `RecordingPolicy`, `FakePolicy`
+- `FakeCircuitBreaker`, `BreakerDecision`

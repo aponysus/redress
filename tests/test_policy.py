@@ -24,6 +24,7 @@ from redress.errors import (
 from redress.events import EventName
 from redress.policy import AttemptDecision, MetricHook, Policy, Retry, RetryPolicy, RetryTimeline
 from redress.strategies import BackoffContext, decorrelated_jitter
+from redress.testing import instant_retries
 
 _retry_mod = importlib.import_module("redress.policy.retry_helpers")
 _state_mod = importlib.import_module("redress.policy.state")
@@ -78,13 +79,6 @@ def _assert_tb_has_frame(err: BaseException, func_name: str) -> None:
     assert tb is not None
     frames = traceback.extract_tb(tb)
     assert any(frame.name == func_name for frame in frames)
-
-
-def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:
-    """
-    Strategy that always returns 0 seconds sleep (for fast tests).
-    """
-    return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +137,7 @@ def test_attempt_hooks_retry_success(monkeypatch: pytest.MonkeyPatch) -> None:
 
     policy = RetryPolicy(
         classifier=lambda exc: ErrorClass.TRANSIENT,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         max_attempts=3,
     )
 
@@ -169,6 +163,30 @@ def test_attempt_hooks_retry_success(monkeypatch: pytest.MonkeyPatch) -> None:
     assert end2.decision is AttemptDecision.SUCCESS
     assert end2.result == "ok"
     assert end2.classification is None
+
+
+def test_policy_accepts_legacy_strategy_signature(monkeypatch: pytest.MonkeyPatch) -> None:
+    attempts = {"n": 0}
+
+    def func() -> str:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RateLimitError("429")
+        return "ok"
+
+    def legacy_strategy(attempt: int, klass: ErrorClass, prev: float | None) -> float:
+        return 0.0
+
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=legacy_strategy,
+        max_attempts=2,
+    )
+
+    assert policy.call(func) == "ok"
+    assert attempts["n"] == 2
 
 
 def test_policy_attempt_hooks_without_retry() -> None:
@@ -208,7 +226,7 @@ def test_policy_abort_if_stops_before_attempt() -> None:
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -272,7 +290,7 @@ def test_policy_execute_success_after_retries(monkeypatch: pytest.MonkeyPatch) -
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=5,
     )
@@ -297,7 +315,7 @@ def test_policy_execute_timeline_success_after_retries(monkeypatch: pytest.Monke
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=5,
     )
@@ -319,7 +337,7 @@ def test_policy_execute_stop_reason_permanent() -> None:
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -341,7 +359,7 @@ def test_policy_execute_stop_reason_per_class_cap() -> None:
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         per_class_max_attempts={ErrorClass.TRANSIENT: 0},
         deadline_s=5.0,
         max_attempts=3,
@@ -363,7 +381,7 @@ def test_policy_execute_stop_reason_unknown_cap() -> None:
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         max_unknown_attempts=0,
         deadline_s=5.0,
         max_attempts=3,
@@ -386,7 +404,7 @@ def test_policy_execute_stop_reason_deadline(monkeypatch: pytest.MonkeyPatch) ->
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=1.0,
         max_attempts=3,
     )
@@ -405,7 +423,7 @@ def test_policy_execute_stop_reason_max_attempts(monkeypatch: pytest.MonkeyPatch
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=1,
     )
@@ -426,7 +444,7 @@ def test_policy_execute_stop_reason_no_strategy() -> None:
     policy = RetryPolicy(
         classifier=classifier,
         strategy=None,
-        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        strategies={ErrorClass.RATE_LIMIT: instant_retries},
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -443,7 +461,7 @@ def test_policy_execute_stop_reason_aborted() -> None:
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -460,7 +478,7 @@ def test_policy_execute_abort_error_sets_stop_reason() -> None:
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -480,7 +498,7 @@ def test_policy_execute_timeline_stop_reason_deadline(monkeypatch: pytest.Monkey
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=1.0,
         max_attempts=3,
     )
@@ -505,7 +523,7 @@ def test_policy_execute_timeline_stop_reason_no_strategy() -> None:
     policy = RetryPolicy(
         classifier=classifier,
         strategy=None,
-        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        strategies={ErrorClass.RATE_LIMIT: instant_retries},
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -526,7 +544,7 @@ def test_policy_execute_timeline_stop_reason_aborted() -> None:
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -548,7 +566,7 @@ def test_policy_execute_timeline_stop_reason_max_attempts(monkeypatch: pytest.Mo
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=1,
     )
@@ -733,7 +751,7 @@ def test_policy_budget_exhausted_execute() -> None:
     budget = Budget(max_retries=1, window_s=60.0)
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=5,
         budget=budget,
@@ -753,14 +771,14 @@ def test_policy_budget_shared_across_policies() -> None:
     budget = Budget(max_retries=1, window_s=60.0)
     policy_one = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=5,
         budget=budget,
     )
     policy_two = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=5,
         budget=budget,
@@ -782,7 +800,7 @@ def test_policy_attempt_timeout_execute() -> None:
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=1.0,
         max_attempts=1,
         attempt_timeout_s=0.01,
@@ -827,7 +845,7 @@ def test_policy_before_sleep_hook_called(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_sleep_handler_missing_context_raises() -> None:
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         max_attempts=1,
     )
     state = _state_mod._RetryState(
@@ -860,7 +878,7 @@ def test_policy_execute_result_failure() -> None:
     policy = RetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=1,
     )
@@ -895,7 +913,7 @@ def test_auth_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=30.0,
         max_attempts=5,
     )
@@ -934,7 +952,7 @@ def test_permission_error_no_retry(monkeypatch: pytest.MonkeyPatch) -> None:
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=30.0,
         max_attempts=5,
     )
@@ -1118,7 +1136,7 @@ def test_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -> None
     policy = RetryPolicy(
         classifier=classifier,
         strategy=None,
-        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        strategies={ErrorClass.RATE_LIMIT: instant_retries},
         deadline_s=30.0,
         max_attempts=5,
     )
@@ -1143,7 +1161,7 @@ def test_keyboard_interrupt_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=30.0,
         max_attempts=3,
     )
@@ -1164,7 +1182,7 @@ def test_system_exit_propagates(monkeypatch: pytest.MonkeyPatch) -> None:
 
     policy = RetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=30.0,
         max_attempts=3,
     )
@@ -1257,7 +1275,7 @@ def test_max_attempts_re_raises_last_exception(monkeypatch: pytest.MonkeyPatch) 
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=30.0,
         max_attempts=3,
     )
@@ -1300,7 +1318,7 @@ def test_operation_and_tags_are_emitted(monkeypatch: pytest.MonkeyPatch) -> None
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -1343,7 +1361,7 @@ def test_log_hook_receives_events(monkeypatch: pytest.MonkeyPatch) -> None:
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -1431,7 +1449,7 @@ def test_hooks_are_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -1467,7 +1485,7 @@ def test_per_class_max_attempts_limits_retries(
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         per_class_max_attempts={ErrorClass.RATE_LIMIT: limit},
         max_attempts=10,
     )
@@ -1493,8 +1511,8 @@ def test_retry_policy_from_config_creates_equivalent_policy() -> None:
         max_attempts=4,
         max_unknown_attempts=1,
         per_class_max_attempts={ErrorClass.RATE_LIMIT: 2},
-        default_strategy=_no_sleep_strategy,
-        class_strategies={ErrorClass.CONCURRENCY: _no_sleep_strategy},
+        default_strategy=instant_retries,
+        class_strategies={ErrorClass.CONCURRENCY: instant_retries},
         result_classifier=lambda result: None,
     )
 
@@ -1538,7 +1556,7 @@ def test_retry_from_config() -> None:
         deadline_s=5.0,
         max_attempts=2,
         max_unknown_attempts=1,
-        default_strategy=_no_sleep_strategy,
+        default_strategy=instant_retries,
     )
 
     retry = Retry.from_config(cfg, classifier=lambda e: ErrorClass.UNKNOWN)
@@ -1639,7 +1657,7 @@ def test_unknown_errors_respect_max_unknown_attempts(monkeypatch: pytest.MonkeyP
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=30.0,
         max_attempts=10,
         max_unknown_attempts=2,
@@ -1809,7 +1827,7 @@ def test_default_classifier_integration(monkeypatch: pytest.MonkeyPatch) -> None
 
     policy = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -1865,7 +1883,7 @@ def test_result_classifier_exhausts_with_typed_error(
     policy = RetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=2,
     )
@@ -1893,7 +1911,7 @@ def test_result_classifier_non_retryable_stops(monkeypatch: pytest.MonkeyPatch) 
     policy = RetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -1921,7 +1939,7 @@ def test_result_classifier_respects_max_unknown_attempts(
     policy = RetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
         max_unknown_attempts=0,
@@ -1948,7 +1966,7 @@ def test_result_classifier_respects_per_class_limits(monkeypatch: pytest.MonkeyP
     policy = RetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
         per_class_max_attempts={ErrorClass.RATE_LIMIT: 0},
@@ -1988,7 +2006,7 @@ def test_result_classifier_mixed_failures_prefer_result(
     policy = RetryPolicy(
         classifier=classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -2018,7 +2036,7 @@ def test_result_classifier_emits_cause_tag(monkeypatch: pytest.MonkeyPatch) -> N
     policy = RetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=2,
     )
@@ -2052,7 +2070,7 @@ def test_policy_matches_retry_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     func_a, calls_a = make_flaky()
     policy_a = RetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -2063,7 +2081,7 @@ def test_policy_matches_retry_policy(monkeypatch: pytest.MonkeyPatch) -> None:
     policy_b = Policy(
         retry=Retry(
             classifier=classifier,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             deadline_s=10.0,
             max_attempts=3,
         )
@@ -2094,7 +2112,7 @@ def test_policy_breaker_counts_once_per_operation(monkeypatch: pytest.MonkeyPatc
     policy = Policy(
         retry=Retry(
             classifier=lambda exc: ErrorClass.TRANSIENT,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             max_attempts=2,
         ),
         circuit_breaker=breaker,
@@ -2137,7 +2155,7 @@ def test_policy_breaker_rejects_when_open(monkeypatch: pytest.MonkeyPatch) -> No
     policy = Policy(
         retry=Retry(
             classifier=lambda exc: ErrorClass.TRANSIENT,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             max_attempts=1,
         ),
         circuit_breaker=breaker,
@@ -2177,7 +2195,7 @@ def test_policy_breaker_emits_transition_events(monkeypatch: pytest.MonkeyPatch)
     policy = Policy(
         retry=Retry(
             classifier=lambda exc: ErrorClass.TRANSIENT,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             max_attempts=1,
         ),
         circuit_breaker=breaker,
@@ -2249,7 +2267,7 @@ def test_policy_breaker_records_result_failure(monkeypatch: pytest.MonkeyPatch) 
         retry=Retry(
             classifier=default_classifier,
             result_classifier=lambda result: ErrorClass.TRANSIENT,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             max_attempts=1,
         ),
         circuit_breaker=breaker,
@@ -2357,7 +2375,7 @@ def test_policy_execute_with_retry_aborted_records_cancel() -> None:
     policy = Policy(
         retry=Retry(
             classifier=default_classifier,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             max_attempts=3,
         ),
         circuit_breaker=breaker,

@@ -22,6 +22,7 @@ from redress.errors import (
 from redress.events import EventName
 from redress.policy import AsyncPolicy, AsyncRetry, AsyncRetryPolicy, AttemptDecision, MetricHook
 from redress.strategies import BackoffContext
+from redress.testing import instant_retries
 
 _retry_mod = importlib.import_module("redress.policy.retry_helpers")
 _state_mod = importlib.import_module("redress.policy.state")
@@ -34,10 +35,6 @@ def _collect_metrics() -> tuple[MetricHook, list[tuple[str, int, float, dict[str
         events.append((event, attempt, sleep_s, tags))
 
     return hook, events
-
-
-def _no_sleep_strategy(_: int, __: ErrorClass, ___: float | None) -> float:
-    return 0.0
 
 
 class _FakeTime:
@@ -69,7 +66,7 @@ def test_async_policy_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> 
 
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=5,
     )
@@ -83,6 +80,37 @@ def test_async_policy_retries_then_succeeds(monkeypatch: pytest.MonkeyPatch) -> 
     success_events = [event for event in events if event[0] == "success"]
     assert len(success_events) == 1
     assert success_events[0][3]["operation"] == "async_test"
+
+
+def test_async_policy_accepts_legacy_strategy_signature(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = {"n": 0}
+
+    async def func() -> str:
+        attempts["n"] += 1
+        if attempts["n"] == 1:
+            raise RateLimitError("429")
+        return "ok"
+
+    def legacy_strategy(attempt: int, klass: ErrorClass, prev: float | None) -> float:
+        return 0.0
+
+    async def noop_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(_retry_mod.asyncio, "sleep", noop_sleep)
+
+    policy = AsyncRetryPolicy(
+        classifier=default_classifier,
+        strategy=legacy_strategy,
+        deadline_s=5.0,
+        max_attempts=2,
+    )
+
+    result = asyncio.run(policy.call(func))
+    assert result == "ok"
+    assert attempts["n"] == 2
 
 
 def test_async_attempt_hooks_retry_success(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,7 +136,7 @@ def test_async_attempt_hooks_retry_success(monkeypatch: pytest.MonkeyPatch) -> N
 
     policy = AsyncRetryPolicy(
         classifier=lambda exc: ErrorClass.TRANSIENT,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         max_attempts=3,
     )
 
@@ -141,7 +169,7 @@ def test_async_policy_permanent_error_no_retry(monkeypatch: pytest.MonkeyPatch) 
 
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -171,7 +199,7 @@ def test_async_policy_abort_if_stops_before_attempt() -> None:
 
     policy = AsyncRetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -232,7 +260,7 @@ def test_async_policy_execute_success_after_retries(monkeypatch: pytest.MonkeyPa
 
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=5,
     )
@@ -266,7 +294,7 @@ def test_async_policy_execute_timeline_result_based(monkeypatch: pytest.MonkeyPa
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -296,7 +324,7 @@ def test_async_policy_execute_result_failure(monkeypatch: pytest.MonkeyPatch) ->
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=1,
     )
@@ -451,7 +479,7 @@ def test_async_policy_budget_exhausted_execute() -> None:
     budget = Budget(max_retries=1, window_s=60.0)
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=5,
         budget=budget,
@@ -471,7 +499,7 @@ def test_async_policy_attempt_timeout_execute() -> None:
 
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=1.0,
         max_attempts=1,
         attempt_timeout_s=0.01,
@@ -554,7 +582,7 @@ def test_async_policy_before_sleep_sync_hook_called(
 def test_async_sleep_handler_invalid_return_raises() -> None:
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         max_attempts=1,
     )
     state = _state_mod._RetryState(
@@ -650,7 +678,7 @@ def test_async_per_class_max_attempts_limits_retries(
 
     policy = AsyncRetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         per_class_max_attempts={ErrorClass.RATE_LIMIT: limit},
         max_attempts=10,
     )
@@ -689,7 +717,7 @@ def test_async_missing_strategy_stops_retries(monkeypatch: pytest.MonkeyPatch) -
     policy = AsyncRetryPolicy(
         classifier=classifier,
         strategy=None,
-        strategies={ErrorClass.RATE_LIMIT: _no_sleep_strategy},
+        strategies={ErrorClass.RATE_LIMIT: instant_retries},
         deadline_s=30.0,
         max_attempts=5,
     )
@@ -717,7 +745,7 @@ def test_async_cancelled_error_propagates_without_retry(monkeypatch: pytest.Monk
 
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=5.0,
         max_attempts=3,
     )
@@ -836,7 +864,7 @@ def test_async_result_classifier_exhausts_with_typed_error(
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=2,
     )
@@ -869,7 +897,7 @@ def test_async_result_classifier_non_retryable_stops(
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -900,7 +928,7 @@ def test_async_result_classifier_respects_max_unknown_attempts(
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
         max_unknown_attempts=0,
@@ -932,7 +960,7 @@ def test_async_result_classifier_respects_per_class_limits(
     policy = AsyncRetryPolicy(
         classifier=default_classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
         per_class_max_attempts={ErrorClass.RATE_LIMIT: 0},
@@ -975,7 +1003,7 @@ def test_async_result_classifier_mixed_failures_prefer_result(
     policy = AsyncRetryPolicy(
         classifier=classifier,
         result_classifier=result_classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -1017,7 +1045,7 @@ def test_async_policy_matches_async_retry_policy(
     func_a, calls_a = make_flaky()
     policy_a = AsyncRetryPolicy(
         classifier=classifier,
-        strategy=_no_sleep_strategy,
+        strategy=instant_retries,
         deadline_s=10.0,
         max_attempts=3,
     )
@@ -1028,7 +1056,7 @@ def test_async_policy_matches_async_retry_policy(
     policy_b = AsyncPolicy(
         retry=AsyncRetry(
             classifier=classifier,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             deadline_s=10.0,
             max_attempts=3,
         )
@@ -1064,7 +1092,7 @@ def test_async_policy_breaker_rejects_when_open(
     policy = AsyncPolicy(
         retry=AsyncRetry(
             classifier=lambda exc: ErrorClass.TRANSIENT,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             max_attempts=1,
         ),
         circuit_breaker=breaker,
@@ -1096,7 +1124,7 @@ def test_async_policy_breaker_cancelled_records(monkeypatch: pytest.MonkeyPatch)
     policy = AsyncPolicy(
         retry=AsyncRetry(
             classifier=lambda exc: ErrorClass.TRANSIENT,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             max_attempts=1,
         ),
         circuit_breaker=breaker,
@@ -1211,7 +1239,7 @@ def test_async_policy_execute_with_retry_aborted_records_cancel() -> None:
     policy = AsyncPolicy(
         retry=AsyncRetry(
             classifier=default_classifier,
-            strategy=_no_sleep_strategy,
+            strategy=instant_retries,
             max_attempts=3,
         ),
         circuit_breaker=breaker,
