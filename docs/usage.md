@@ -139,6 +139,12 @@ policy.execute(do_work, before_sleep=before_sleep)
 If you want to keep the built-in retry decisions but replace the actual sleep
 (e.g., deterministic tests or a custom scheduler), pass a `sleeper`.
 
+## Testing utilities
+
+For deterministic tests and lightweight policy stubs, see
+`docs/testing.md` (covers `DeterministicStrategy`, `instant_retries`,
+`RecordingPolicy`, and `FakePolicy`).
+
 ```python
 def fake_sleep(seconds: float) -> None:
     record_sleep(seconds)

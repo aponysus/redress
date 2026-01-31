@@ -6,6 +6,7 @@ from redress.circuit import CircuitState
 from redress.classify import Classification
 from redress.errors import ErrorClass, StopReason
 from redress.policy.types import RetryOutcome
+from redress.strategies import BackoffContext
 from redress.testing import (
     BreakerDecision,
     DeterministicStrategy,
@@ -15,7 +16,6 @@ from redress.testing import (
     instant_retries,
     no_retries,
 )
-from redress.strategies import BackoffContext
 
 
 def _context(attempt: int) -> BackoffContext:

@@ -61,6 +61,9 @@ assert policy.calls[-1].kwargs["operation"] == "demo"
 
 `RecordingPolicy` also supports async policies; it records after awaiting.
 
+Use it to assert wrapper/decorator forwarding without a full metric/log spy
+setup (e.g., verify `operation`, `on_metric`, or `on_log` are passed through).
+
 ## FakePolicy
 
 Use a lightweight stub when you only need outcomes.

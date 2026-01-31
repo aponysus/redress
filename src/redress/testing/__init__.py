@@ -218,7 +218,7 @@ class FakePolicy:
         )
         return success_outcome
 
-    def context(self, **kwargs: Any) -> "_PolicyContext":
+    def context(self, **kwargs: Any) -> _PolicyContext:
         return _PolicyContext(self, kwargs)
 
 
@@ -272,9 +272,7 @@ class RecordingPolicy:
                         ExecuteRecord(func=func, kwargs=kwargs_copy, exception=exc)
                     )
                     raise
-                self.executions.append(
-                    ExecuteRecord(func=func, kwargs=kwargs_copy, outcome=value)
-                )
+                self.executions.append(ExecuteRecord(func=func, kwargs=kwargs_copy, outcome=value))
                 return value
 
             return _await_and_record()
@@ -282,7 +280,7 @@ class RecordingPolicy:
         self.executions.append(ExecuteRecord(func=func, kwargs=kwargs_copy, outcome=outcome))
         return outcome
 
-    def context(self, **kwargs: Any) -> "_PolicyContext":
+    def context(self, **kwargs: Any) -> _PolicyContext:
         return _PolicyContext(self, kwargs)
 
     def __getattr__(self, name: str) -> Any:
