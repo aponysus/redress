@@ -173,6 +173,35 @@ Legacy strategies with `(attempt, klass, prev_sleep_s)` are still supported.
 Strategies must accept exactly one required positional argument (ctx) or three
 required positional arguments (attempt, klass, prev_sleep_s).
 
+## Adaptive backoff
+
+Use `adaptive()` to scale a fallback strategy based on recent success/failure rate.
+It only increases backoff (never below the fallback), and returns to baseline as
+successes dominate.
+
+```python
+from redress.strategies import adaptive, decorrelated_jitter
+
+strategy = adaptive(
+    decorrelated_jitter(max_s=10.0),
+    window_s=60.0,
+    target_success=0.9,
+    max_multiplier=5.0,
+)
+```
+
+If you also use Retry-After, wrap `adaptive()` inside `retry_after_or` so
+Retry-After values are left untouched:
+
+```python
+from redress.strategies import adaptive, decorrelated_jitter, retry_after_or
+
+strategy = retry_after_or(adaptive(decorrelated_jitter(max_s=10.0)))
+```
+
+`adaptive()` is thread-safe and safe to share across policies. For most services,
+`window_s=60` and `target_success=0.9` are good starting points.
+
 ## Result-based retries
 
 Use `result_classifier` to retry on return values instead of exceptions.

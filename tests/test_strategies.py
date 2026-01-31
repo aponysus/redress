@@ -4,6 +4,7 @@
 import random
 
 import hypothesis.strategies as st
+import pytest
 from hypothesis import given
 
 import redress.strategies as strategies
@@ -11,11 +12,23 @@ from redress.classify import Classification
 from redress.errors import ErrorClass
 from redress.strategies import (
     BackoffContext,
+    adaptive,
     decorrelated_jitter,
     equal_jitter,
     retry_after_or,
     token_backoff,
 )
+
+
+class _FakeClock:
+    def __init__(self, start: float = 0.0) -> None:
+        self._now = start
+
+    def monotonic(self) -> float:
+        return self._now
+
+    def advance(self, seconds: float) -> None:
+        self._now += seconds
 
 
 def test_decorrelated_jitter_bounds() -> None:
@@ -46,6 +59,80 @@ def test_token_backoff_bounds() -> None:
         sleep_s = strat(attempt, ErrorClass.RATE_LIMIT, prev)
         assert 0.0 <= sleep_s <= 3.0
         prev = sleep_s
+
+
+def test_adaptive_strategy_scales_up() -> None:
+    clock = _FakeClock()
+    strat = adaptive(
+        lambda ctx: 1.0,
+        window_s=60.0,
+        target_success=0.8,
+        max_multiplier=3.0,
+        clock=clock.monotonic,
+    )
+
+    strat.record_failure()
+    strat.record_failure()
+
+    ctx = BackoffContext(
+        attempt=1,
+        classification=Classification(ErrorClass.TRANSIENT),
+        prev_sleep_s=None,
+        remaining_s=None,
+        cause="exception",
+    )
+
+    assert strat(ctx) == 3.0
+
+
+def test_adaptive_strategy_resets_with_successes() -> None:
+    clock = _FakeClock()
+    strat = adaptive(
+        lambda ctx: 1.0,
+        window_s=60.0,
+        target_success=0.8,
+        max_multiplier=3.0,
+        clock=clock.monotonic,
+    )
+
+    strat.record_failure()
+    for _ in range(4):
+        strat.record_success()
+
+    ctx = BackoffContext(
+        attempt=1,
+        classification=Classification(ErrorClass.TRANSIENT),
+        prev_sleep_s=None,
+        remaining_s=None,
+        cause="exception",
+    )
+
+    assert strat(ctx) == pytest.approx(1.0)
+
+
+def test_adaptive_strategy_prunes_window() -> None:
+    clock = _FakeClock()
+    strat = adaptive(
+        lambda ctx: 1.0,
+        window_s=5.0,
+        target_success=0.9,
+        max_multiplier=4.0,
+        clock=clock.monotonic,
+    )
+
+    strat.record_failure()
+    clock.advance(10.0)
+    strat.record_success()
+
+    ctx = BackoffContext(
+        attempt=1,
+        classification=Classification(ErrorClass.TRANSIENT),
+        prev_sleep_s=None,
+        remaining_s=None,
+        cause="exception",
+    )
+
+    assert strat(ctx) == 1.0
 
 
 @given(

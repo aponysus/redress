@@ -67,6 +67,7 @@ class _RetryState:
         self.last_stop_reason: StopReason | None = None
         self.unknown_attempts: int = 0
         self.per_class_counts: dict[ErrorClass, int] = collections.defaultdict(int)
+        self._last_strategy: Any | None = None
 
     def check_abort(self, attempt: int) -> None:
         if self.abort_if is None:
@@ -150,6 +151,14 @@ class _RetryState:
         else:
             self.last_result = result
             self.last_exc = None
+
+    def record_success(self) -> None:
+        strategy = self._last_strategy
+        if strategy is None:
+            return
+        record = getattr(strategy, "record_success", None)
+        if callable(record):
+            record()
 
     def handle_exception(self, exc: BaseException, attempt: int) -> _RetryDecision:
         """
@@ -270,6 +279,11 @@ class _RetryState:
                 cause=cause,
             )
             return _RetryDecision("raise")
+
+        self._last_strategy = strategy
+        record_failure = getattr(strategy, "record_failure", None)
+        if callable(record_failure):
+            record_failure(klass)
 
         remaining = self.policy.deadline - self.elapsed()
         remaining_s = remaining.total_seconds()

@@ -189,6 +189,43 @@ def test_policy_accepts_legacy_strategy_signature(monkeypatch: pytest.MonkeyPatc
     assert attempts["n"] == 2
 
 
+def test_policy_records_strategy_outcomes(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = {"n": 0}
+
+    def func() -> str:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RateLimitError("429")
+        return "ok"
+
+    class CountingStrategy:
+        def __init__(self) -> None:
+            self.failure_calls = 0
+            self.success_calls = 0
+
+        def __call__(self, ctx: BackoffContext) -> float:
+            return 0.0
+
+        def record_failure(self, klass: ErrorClass | None = None) -> None:
+            self.failure_calls += 1
+
+        def record_success(self) -> None:
+            self.success_calls += 1
+
+    strategy = CountingStrategy()
+    monkeypatch.setattr(_retry_mod.time, "sleep", lambda s: None)
+
+    policy = RetryPolicy(
+        classifier=default_classifier,
+        strategy=strategy,
+        max_attempts=2,
+    )
+
+    assert policy.call(func) == "ok"
+    assert strategy.failure_calls == 1
+    assert strategy.success_calls == 1
+
+
 def test_policy_attempt_hooks_without_retry() -> None:
     calls: list[tuple[str, Any]] = []
 

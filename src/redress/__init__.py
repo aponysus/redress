@@ -50,6 +50,7 @@ from .policy import (
 )
 from .strategies import (
     BackoffContext,
+    adaptive,
     decorrelated_jitter,
     equal_jitter,
     retry_after_or,
@@ -93,6 +94,7 @@ __all__ = [
     "equal_jitter",
     "token_backoff",
     "retry_after_or",
+    "adaptive",
     "default_classifier",
     "aiohttp_classifier",
     "boto3_classifier",

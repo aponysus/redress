@@ -43,6 +43,7 @@
 - `equal_jitter`
 - `token_backoff`
 - `retry_after_or`
+- `adaptive`
 - `BackoffContext` for context-aware strategy functions
 
 ## Errors

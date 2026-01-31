@@ -20,3 +20,11 @@ repos:
         pass_filenames: false
         additional_dependencies:
           - types-setuptools
+
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: uv run pytest
+        language: system
+        pass_filenames: false

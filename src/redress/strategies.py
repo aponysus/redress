@@ -1,8 +1,11 @@
 import inspect
 import math
 import random
+import threading
+import time
+from collections import deque
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, cast
 
 from .classify import Classification
@@ -61,6 +64,107 @@ def _normalize_strategy(strategy: StrategyFn) -> BackoffFn:
         return wrapped
 
     raise TypeError("Strategy must accept (ctx) or (attempt, klass, prev_sleep_s)")
+
+
+@dataclass
+class AdaptiveStrategy:
+    """
+    Adaptive backoff wrapper that scales a fallback strategy.
+
+    The multiplier increases as failures exceed a target rate, and returns to
+    baseline when the failure rate falls back within the target.
+    """
+
+    fallback: BackoffFn
+    window_s: float
+    target_success: float
+    min_multiplier: float
+    max_multiplier: float
+    clock: Callable[[], float] = time.monotonic
+    _events: deque[tuple[float, bool]] = field(default_factory=deque, init=False, repr=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+
+    def record_success(self) -> None:
+        self._record(True)
+
+    def record_failure(self, klass: ErrorClass | None = None) -> None:
+        self._record(False)
+
+    def __call__(self, ctx: BackoffContext) -> float:
+        sleep_s = self.fallback(ctx)
+        multiplier = self._multiplier()
+        return sleep_s * multiplier
+
+    def _record(self, success: bool) -> None:
+        now = self.clock()
+        with self._lock:
+            self._events.append((now, success))
+            self._prune(now)
+
+    def _prune(self, now: float) -> None:
+        cutoff = now - self.window_s
+        while self._events and self._events[0][0] <= cutoff:
+            self._events.popleft()
+
+    def _multiplier(self) -> float:
+        now = self.clock()
+        with self._lock:
+            self._prune(now)
+            total = len(self._events)
+            if total == 0:
+                return self.min_multiplier
+            failures = sum(1 for _, success in self._events if not success)
+            failure_rate = failures / total
+
+        target_failure = 1.0 - self.target_success
+        if failure_rate <= target_failure:
+            return self.min_multiplier
+
+        if target_failure >= 1.0:
+            return self.max_multiplier
+
+        frac = (failure_rate - target_failure) / (1.0 - target_failure)
+        return min(
+            self.max_multiplier,
+            max(
+                self.min_multiplier,
+                self.min_multiplier + frac * (self.max_multiplier - self.min_multiplier),
+            ),
+        )
+
+
+def adaptive(
+    fallback: StrategyFn,
+    *,
+    window_s: float = 60.0,
+    target_success: float = 0.9,
+    min_multiplier: float = 1.0,
+    max_multiplier: float = 5.0,
+    clock: Callable[[], float] = time.monotonic,
+) -> AdaptiveStrategy:
+    """
+    Wrap a fallback strategy with adaptive backoff scaling.
+
+    The multiplier increases when the failure rate exceeds (1 - target_success).
+    """
+    if window_s <= 0:
+        raise ValueError("window_s must be > 0.")
+    if not (0.0 < target_success <= 1.0):
+        raise ValueError("target_success must be > 0 and <= 1.")
+    if min_multiplier < 1.0:
+        raise ValueError("min_multiplier must be >= 1.0.")
+    if max_multiplier < min_multiplier:
+        raise ValueError("max_multiplier must be >= min_multiplier.")
+
+    fallback_fn = _normalize_strategy(fallback)
+    return AdaptiveStrategy(
+        fallback=fallback_fn,
+        window_s=window_s,
+        target_success=target_success,
+        min_multiplier=min_multiplier,
+        max_multiplier=max_multiplier,
+        clock=clock,
+    )
 
 
 def decorrelated_jitter(base_s: float = 0.25, max_s: float = 30.0) -> StrategyFn:

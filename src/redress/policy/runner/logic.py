@@ -215,6 +215,7 @@ def handle_abort_in_execute(
 
 def emit_success(state: _RetryState, attempt: int) -> None:
     """Emit success event."""
+    state.record_success()
     state.emit(EventName.SUCCESS.value, attempt, 0.0)
 
 
