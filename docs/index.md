@@ -69,4 +69,5 @@ result = policy.call(lambda: do_work(), operation="sync_task")
 - [Testing utilities](testing.md) – deterministic helpers and policy spies.
 - [Reference flows](reference-flows.md) - end-to-end service patterns.
 - [Examples & Integrations](examples/index.md) – runnable snippets for HTTP, DB, workers, FastAPI, benchmarks.
+- [Comparison](comparison.md) – Redress vs. alternatives.
 - [API reference](api.md) – entry points at a glance.
