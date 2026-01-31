@@ -65,6 +65,7 @@ result = policy.call(lambda: do_work(), operation="sync_task")
 - [Observability](observability.md) – metrics/log hooks and patterns.
 - [Safety and resilience](safety-resilience.md): hook isolation, jitter guidance, production checklist.
 - [Usage](usage.md) - basic usage patterns.
+- [Recipes](recipes/http.md) - HTTP/DB/worker patterns and observability wiring.
 - [Testing utilities](testing.md) – deterministic helpers and policy spies.
 - [Reference flows](reference-flows.md) - end-to-end service patterns.
 - [Examples & Integrations](examples/index.md) – runnable snippets for HTTP, DB, workers, FastAPI, benchmarks.

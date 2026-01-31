@@ -1,5 +1,7 @@
 # HTTP classifiers & Retry-After
 
+See also: [DB recipes](db.md), [Observability recipes](observability.md), [Worker recipes](workers.md).
+
 This recipe shows two common patterns:
 
 1) exception-based HTTP retries (raise for status)

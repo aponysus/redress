@@ -1,5 +1,7 @@
 # DB classifiers (SQLSTATE)
 
+See also: [HTTP recipes](http.md), [Observability recipes](observability.md), [Worker recipes](workers.md).
+
 SQLSTATE-based classifiers are a reliable way to handle database errors across
 pyodbc, asyncpg, psycopg, and other DBAPI-style drivers.
 

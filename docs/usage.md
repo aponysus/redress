@@ -91,6 +91,14 @@ policy = RetryPolicy(
 
 When the budget is exhausted, retries stop with `StopReason.BUDGET_EXHAUSTED`.
 
+### Backpressure with budgets
+
+Budgets are a coarse backpressure mechanism that limit aggregate retry work.
+
+- Start with `max_retries` near your peak concurrency.
+- Set `window_s` to match the upstream recovery window (e.g., 30–120s).
+- Alert on `BUDGET_EXHAUSTED` and consider dropping concurrency or widening the window.
+
 ## Per-attempt timeouts
 
 Set a per-attempt timeout to bound each call, independently of the overall deadline.

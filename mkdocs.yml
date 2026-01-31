@@ -39,6 +39,7 @@ nav:
       - HTTP: recipes/http.md
       - Databases: recipes/db.md
       - Observability: recipes/observability.md
+      - Worker/Queue: recipes/workers.md
   - Usage: usage.md
   - Reference flows: reference-flows.md
   - Examples: examples/index.md

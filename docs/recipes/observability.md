@@ -1,5 +1,7 @@
 # Observability recipes (low-cardinality tags)
 
+See also: [HTTP recipes](http.md), [DB recipes](db.md), [Worker recipes](workers.md).
+
 Redress emits lifecycle events via `on_metric` and `on_log`. These hooks are designed
 for metrics/logging without coupling to a specific backend.
 

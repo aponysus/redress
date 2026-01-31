@@ -46,7 +46,12 @@ See [Retry strategies](concepts/strategies.md) for details on built-ins.
 - Deadline: tune `deadline_s` to your upstream SLA; it bounds wall-clock retry time.
 - Max attempts: set `max_attempts` and `max_unknown_attempts` to prevent runaway loops.
 - Per-class caps: use `per_class_max_attempts` for noisy classes like `RATE_LIMIT`/`SERVER_ERROR`.
+- Budgets: use `Budget(max_retries, window_s)` to cap aggregate retry volume (backpressure).
+- Backpressure: start with `max_retries` near peak concurrency and a `window_s` that matches your
+  upstream recovery window; alert on `BUDGET_EXHAUSTED`.
 - Backoff: use jittered strategies with `max_s` sized to the recovery window.
+- Sleeper hooks: if you need leases/locks or external schedulers, use `before_sleep` or `sleeper`.
+- Adaptive backoff: use `adaptive()` only when you want retry volume to react to failure spikes.
 - Observability: set `operation`, attach `on_metric` or `on_log`, keep tags low-cardinality.
 - Key metrics: watch `retry`, `success`, `deadline_exceeded`, `max_attempts_exceeded`,
   `max_unknown_attempts_exceeded`, `permanent_fail`, and distributions of `sleep_s`.
