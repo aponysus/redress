@@ -75,8 +75,7 @@ def _lint_config_view(cfg: _ConfigView) -> tuple[list[str], list[str]]:
 
     if cfg.attempt_timeout_s is not None and cfg.attempt_timeout_s <= 0:
         errors.append(
-            f"[{cfg.source}] attempt_timeout_s must be > 0 or None "
-            f"(got {cfg.attempt_timeout_s!r})"
+            f"[{cfg.source}] attempt_timeout_s must be > 0 or None (got {cfg.attempt_timeout_s!r})"
         )
 
     if cfg.attempt_timeout_s is not None and cfg.attempt_timeout_s >= cfg.deadline_s:

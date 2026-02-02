@@ -2,6 +2,19 @@
 
 Release notes are maintained here.
 
+## [1.2.0] - 2026-02-02
+### Added
+- Optional classifier helpers via extras: `aiohttp`, `grpc`, `boto3/botocore`, `redis`, `urllib3`, and `pyodbc`.
+- Shared retry budgets (`Budget`) with `BUDGET_EXHAUSTED` stop reason/event for backpressure.
+- Testing utilities under `redress.testing` (DeterministicStrategy, instant/no retries, FakePolicy, RecordingPolicy, FakeCircuitBreaker).
+- Per-attempt timeouts (`attempt_timeout_s`) for Retry/AsyncRetry; `TimeoutError` defaults to TRANSIENT.
+- Injectable sleeper (`SleeperFn`) and `before_sleep` hooks for sync/async retries.
+- Adaptive backoff strategy wrapper (`adaptive`) for failure-rate-sensitive backoff.
+
+### Docs
+- Added testing guide, worker/queue recipe, and comparison page.
+- Expanded production checklist and budget backpressure guidance.
+
 ## [1.1.0] - 2026-01-25
 ### Added
 - Unified `Policy`/`Retry` containers (and async variants) with circuit breaker integration.

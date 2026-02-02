@@ -1,7 +1,7 @@
 [project]
 name = "redress"
-version = "1.1.0"
-description = "A composable retry policy framework with classification, jitter strategies, and observability hooks."
+version = "1.2.0"
+description = "Policy-driven failure handling for Python services."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }

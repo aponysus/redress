@@ -26,24 +26,19 @@ Focus: a coherent execution model plus integration ergonomics that avoid bespoke
 - Observability improvements and an OpenTelemetry contrib hook.
 - Docs refresh with end-to-end recipes (HTTP calls, worker loops, graceful shutdown).
 
-## v1.2 (Q2 2026) Built-in Classifiers and Recipes
+## v1.2 (Q1 2026) Built-in Classifiers, Recipes, and Advanced Patterns
 
-Focus: reduce bespoke wiring for common stacks.
+Focus: reduce bespoke wiring for common stacks, plus production guardrails.
 
 - Built-in classifiers for common libraries (aiohttp, grpc, boto3/botocore, redis, etc.) via extras.
 - Classifier authoring guidance and integration recipes.
 - Additional small strategy helpers driven by real-world patterns.
-
-## v1.3 (Q3 2026) Advanced Patterns and Testability
-
-Focus: production guardrails and deterministic behavior.
-
 - Retry budgets to prevent retry storms.
 - Testing utilities for deterministic retries.
 - Per-attempt timeouts in addition to overall deadlines.
 - Injectable sleeper / before-sleep hook to integrate with leases and external schedulers.
 
-## v1.4+ (Q4 2026+) Ecosystem Expansion
+## v1.3+ (Q2 2026+) Ecosystem Expansion
 
 Focus: optional integrations and higher-level execution models.
 
