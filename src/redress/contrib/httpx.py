@@ -38,9 +38,7 @@ class SyncPolicyLike(Protocol[ResponseT]):
 
 
 class AsyncPolicyLike(Protocol[ResponseT]):
-    async def call(
-        self, func: Callable[[], Awaitable[ResponseT]], **kwargs: Any
-    ) -> ResponseT: ...
+    async def call(self, func: Callable[[], Awaitable[ResponseT]], **kwargs: Any) -> ResponseT: ...
 
 
 OperationBuilder = Callable[[str, object], str | None]

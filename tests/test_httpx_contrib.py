@@ -221,7 +221,9 @@ def test_httpx_sync_smoke_retries_until_success() -> None:
         deadline_s=1.0,
     )
 
-    with httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test") as client:
+    with httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://example.test"
+    ) as client:
         wrapped = RetryingHttpxClient(client, policy)
         response = wrapped.get("/flaky")
 

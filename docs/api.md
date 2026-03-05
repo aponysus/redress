@@ -81,6 +81,9 @@
 
 ## Contrib integrations
 
+- `redress.contrib.asgi.retry_middleware(...)` (generic Starlette-style ASGI middleware helper)
+- `redress.contrib.asgi.default_operation(request)` / `scope_operation(request)` (`METHOD + scope["path"]`)
+- `redress.contrib.asgi.is_idempotent_request(request)` (HTTP idempotency guard helper)
 - `redress.contrib.fastapi.retry_middleware(...)` (FastAPI/Starlette middleware helper)
 - `redress.contrib.fastapi.default_operation(request)` (method + route path)
 - `redress.contrib.httpx.RetryingHttpxClient(client, policy, ...)` (sync wrapper class)
@@ -89,6 +92,7 @@
 - `redress.contrib.httpx.arequest_with_retry(...)` (async request wrapper)
 - `redress.contrib.httpx.default_result_classifier(response)` (429/408/409/5xx mapper with Retry-After support)
 - `redress.contrib.httpx.is_idempotent_method(method)` (HTTP method guard helper)
+- Note: ASGI contrib targets `request/call_next` middleware shape, not raw `(scope, receive, send)`.
 
 ## Events
 

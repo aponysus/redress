@@ -1,48 +1,31 @@
-"""FastAPI integration helpers.
+"""FastAPI/Starlette HTTP middleware helpers.
 
-This module is dependency-free; it assumes FastAPI is installed in the
-application environment but avoids importing it so `redress` remains
-lightweight. The middleware returned here retries the *entire* request
-handler, so only use it for idempotent endpoints.
+Built on top of `redress.contrib.asgi` and kept here for backward-compatible
+imports plus route-template-aware operation naming.
 """
 
 from collections.abc import Awaitable, Callable, Mapping
-from typing import Any, Protocol, TypeVar
+from typing import Any, TypeVar
 
-T = TypeVar("T")
+from .asgi import (
+    IDEMPOTENT_METHODS,
+    AsyncPolicyLike,
+    CallKwargsProvider,
+    CallNext,
+    OperationBuilder,
+    PolicyProvider,
+    RequestLike,
+    SkipPredicate,
+    is_idempotent_request,
+)
+from .asgi import (
+    default_operation as _scope_default_operation,
+)
+from .asgi import (
+    retry_middleware as _asgi_retry_middleware,
+)
+
 ResponseT = TypeVar("ResponseT")
-
-
-class UrlLike(Protocol):
-    path: str
-
-
-class RequestLike(Protocol):
-    method: str
-    url: UrlLike
-    scope: Mapping[str, Any]
-
-    async def body(self) -> bytes: ...
-
-
-class AsyncPolicyLike(Protocol[T]):
-    async def call(self, func: Callable[[], Awaitable[T]], **kwargs: Any) -> T: ...
-
-
-CallNext = Callable[[RequestLike], Awaitable[T]]
-PolicyProvider = Callable[[RequestLike], AsyncPolicyLike[T]]
-OperationBuilder = Callable[[RequestLike], str | None]
-SkipPredicate = Callable[[RequestLike], bool]
-CallKwargsProvider = Callable[[RequestLike], Mapping[str, Any]]
-
-IDEMPOTENT_METHODS = frozenset({"DELETE", "GET", "HEAD", "OPTIONS", "PUT"})
-
-
-def is_idempotent_request(request: RequestLike) -> bool:
-    """
-    Return True if the request uses an idempotent HTTP method.
-    """
-    return request.method.upper() in IDEMPOTENT_METHODS
 
 
 def _route_path(scope: Mapping[str, Any]) -> str | None:
@@ -66,13 +49,11 @@ def default_operation(request: RequestLike) -> str:
     Build an operation name from the HTTP method and route path.
 
     Uses the router path template when available to avoid high-cardinality
-    metrics; falls back to the raw request path.
+    metrics; falls back to ASGI scope path semantics.
     """
     path = _route_path(request.scope)
     if path is None:
-        path = getattr(request.url, "path", None)
-    if not isinstance(path, str):
-        path = str(request.scope.get("path", ""))
+        return _scope_default_operation(request)
     return f"{request.method} {path}"
 
 
@@ -87,42 +68,15 @@ def retry_middleware(
     """
     Build a FastAPI middleware function that wraps requests in a retry policy.
 
-    Usage:
-        app.middleware("http")(retry_middleware(policy))
-
-    Provide either `policy` (shared) or `policy_provider` (per-request).
+    Defaults to route-template-aware operation naming.
     """
-    if (policy is None) == (policy_provider is None):
-        raise ValueError("Provide exactly one of policy or policy_provider.")
-
-    operation_builder = operation or default_operation
-
-    async def middleware(request: RequestLike, call_next: CallNext[ResponseT]) -> ResponseT:
-        if skip_if is not None and skip_if(request):
-            return await call_next(request)
-
-        policy_obj = policy_provider(request) if policy_provider is not None else policy
-        if policy_obj is None:  # pragma: no cover - defensive guard
-            raise RuntimeError("Retry policy missing.")
-
-        kwargs: dict[str, Any] = {}
-        if call_kwargs is not None:
-            if callable(call_kwargs):
-                kwargs.update(call_kwargs(request))
-            else:
-                kwargs.update(call_kwargs)
-
-        if "operation" not in kwargs:
-            operation_value = operation_builder(request) if operation_builder is not None else None
-            if operation_value is not None:
-                kwargs["operation"] = operation_value
-
-        async def _call() -> ResponseT:
-            return await call_next(request)
-
-        return await policy_obj.call(_call, **kwargs)
-
-    return middleware
+    return _asgi_retry_middleware(
+        policy,
+        policy_provider=policy_provider,
+        operation=operation or default_operation,
+        skip_if=skip_if,
+        call_kwargs=call_kwargs,
+    )
 
 
 __all__ = [

@@ -61,6 +61,13 @@
 - Snippet: `docs/snippets/pyodbc_retry.py` shows batched row fetch under retry.
 - Run: `uv pip install pyodbc` and set `PYODBC_CONN_STR`, then `uv run python docs/snippets/pyodbc_retry.py`.
 
+## ASGI middleware (Starlette-style)
+
+- Snippet: `docs/snippets/asgi_middleware.py`
+- Uses `redress.contrib.asgi.retry_middleware` with `default_operation` (`METHOD + scope["path"]`).
+- Scope: Starlette-style `(request, call_next)` middleware. This is not raw ASGI `(scope, receive, send)`.
+- Run: `uv pip install starlette "uvicorn[standard]"` then `uv run uvicorn docs.snippets.asgi_middleware:app --reload`.
+
 ## FastAPI proxy with retries
 
 - Snippet: `docs/snippets/fastapi_downstream.py`

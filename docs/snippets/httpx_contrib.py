@@ -37,7 +37,9 @@ def sync_demo() -> None:
         deadline_s=2.0,
     )
 
-    with httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test") as client:
+    with httpx.Client(
+        transport=httpx.MockTransport(handler), base_url="https://example.test"
+    ) as client:
         wrapped = RetryingHttpxClient(
             client,
             policy,
