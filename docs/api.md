@@ -92,6 +92,10 @@
 - `redress.contrib.httpx.arequest_with_retry(...)` (async request wrapper)
 - `redress.contrib.httpx.default_result_classifier(response)` (429/408/409/5xx mapper with Retry-After support)
 - `redress.contrib.httpx.is_idempotent_method(method)` (HTTP method guard helper)
+- `redress.contrib.grpc.unary_unary_client_interceptor(...)` (sync unary-unary client interceptor factory)
+- `redress.contrib.grpc.aio_unary_unary_client_interceptor(...)` (async unary-unary client interceptor factory)
+- `redress.contrib.grpc.default_operation(call_details)` (operation tag from RPC method path)
+- `redress.contrib.grpc.rpc_service_name(call_details)` / `rpc_method_name(call_details)` (RPC name helpers)
 - Note: ASGI contrib targets `request/call_next` middleware shape, not raw `(scope, receive, send)`.
 
 ## Events

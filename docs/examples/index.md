@@ -68,6 +68,13 @@
 - Scope: Starlette-style `(request, call_next)` middleware. This is not raw ASGI `(scope, receive, send)`.
 - Run: `uv pip install starlette "uvicorn[standard]"` then `uv run uvicorn docs.snippets.asgi_middleware:app --reload`.
 
+## gRPC unary-unary client interceptor
+
+- Snippet: `docs/snippets/grpc_interceptor.py`
+- Uses `redress.contrib.grpc.unary_unary_client_interceptor` and `aio_unary_unary_client_interceptor`.
+- Recommended classifier: `redress.extras.grpc_classifier`.
+- Run: `uv pip install "redress[grpc]"`.
+
 ## FastAPI proxy with retries
 
 - Snippet: `docs/snippets/fastapi_downstream.py`
