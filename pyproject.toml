@@ -61,6 +61,9 @@ urllib3 = [
 redis = [
     "redis>=5.0.0",
 ]
+fastapi = [
+    "fastapi>=0.110.0",
+]
 
 [project.scripts]
 redress = "redress.cli:main"

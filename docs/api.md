@@ -79,6 +79,11 @@
 - `otel_metric_hook(meter, name="redress_attempts")`
 - `redress.contrib.otel.otel_hooks(tracer=None, meter=None)` (spans + metrics)
 
+## Contrib integrations
+
+- `redress.contrib.fastapi.retry_middleware(...)` (FastAPI/Starlette middleware helper)
+- `redress.contrib.fastapi.default_operation(request)` (method + route path)
+
 ## Events
 
 - `EventName` enum (`redress.events.EventName`) for hook event constants

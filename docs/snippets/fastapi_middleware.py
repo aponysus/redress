@@ -2,20 +2,21 @@
 FastAPI example with middleware applying per-endpoint retry policies.
 
 Run:
-    uv pip install "fastapi[standard]" httpx
+    uv pip install "redress[fastapi]" "fastapi[standard]" httpx
     uv run uvicorn docs.snippets.fastapi_middleware:app --reload
 """
 
 import httpx
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request
 
-from redress import RetryPolicy
+from redress import AsyncRetryPolicy
+from redress.contrib.fastapi import default_operation, retry_middleware
 from redress.extras import http_classifier
 from redress.strategies import decorrelated_jitter
 
 
-def make_policy(operation: str) -> RetryPolicy:
-    return RetryPolicy(
+def policy_for(_request: Request) -> AsyncRetryPolicy:
+    return AsyncRetryPolicy(
         classifier=http_classifier,
         strategy=decorrelated_jitter(max_s=2.0),
         max_attempts=4,
@@ -25,16 +26,12 @@ def make_policy(operation: str) -> RetryPolicy:
 
 app = FastAPI()
 
-
-@app.middleware("http")
-async def retry_middleware(request: Request, call_next) -> Response:
-    operation = request.url.path
-    policy = make_policy(operation)
-
-    async def _call() -> Response:
-        return await call_next(request)
-
-    return await policy.call(_call, operation=operation)
+app.middleware("http")(
+    retry_middleware(
+        policy_provider=policy_for,
+        operation=default_operation,
+    )
+)
 
 
 @app.get("/ok")
