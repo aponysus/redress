@@ -31,8 +31,8 @@ class AsyncPolicyLike(Protocol[T]):
     async def call(self, func: Callable[[], Awaitable[T]], **kwargs: Any) -> T: ...
 
 
-CallNext = Callable[[RequestLike], Awaitable[ResponseT]]
-PolicyProvider = Callable[[RequestLike], AsyncPolicyLike[ResponseT]]
+CallNext = Callable[[RequestLike], Awaitable[T]]
+PolicyProvider = Callable[[RequestLike], AsyncPolicyLike[T]]
 OperationBuilder = Callable[[RequestLike], str | None]
 SkipPredicate = Callable[[RequestLike], bool]
 CallKwargsProvider = Callable[[RequestLike], Mapping[str, Any]]
@@ -81,11 +81,11 @@ def default_operation(request: RequestLike) -> str:
 def retry_middleware(
     policy: AsyncPolicyLike[ResponseT] | None = None,
     *,
-    policy_provider: PolicyProvider | None = None,
+    policy_provider: PolicyProvider[ResponseT] | None = None,
     operation: OperationBuilder | None = None,
     skip_if: SkipPredicate | None = None,
     call_kwargs: Mapping[str, Any] | CallKwargsProvider | None = None,
-) -> Callable[[RequestLike, CallNext], Awaitable[ResponseT]]:
+) -> Callable[[RequestLike, CallNext[ResponseT]], Awaitable[ResponseT]]:
     """
     Build a FastAPI middleware function that wraps requests in a retry policy.
 
@@ -99,7 +99,7 @@ def retry_middleware(
 
     operation_builder = operation or default_operation
 
-    async def middleware(request: RequestLike, call_next: CallNext) -> ResponseT:
+    async def middleware(request: RequestLike, call_next: CallNext[ResponseT]) -> ResponseT:
         if skip_if is not None and skip_if(request):
             return await call_next(request)
 
