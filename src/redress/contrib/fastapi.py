@@ -6,8 +6,6 @@ lightweight. The middleware returned here retries the *entire* request
 handler, so only use it for idempotent endpoints.
 """
 
-from __future__ import annotations
-
 from collections.abc import Awaitable, Callable, Mapping
 from typing import Any, Protocol, TypeVar
 

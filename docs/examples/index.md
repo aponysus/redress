@@ -1,5 +1,12 @@
 # Examples & integrations
 
+## HTTPX contrib wrappers (sync + async)
+
+- Snippet: `docs/snippets/httpx_contrib.py`
+- Canonical helper API via `RetryingHttpxClient` / `AsyncRetryingHttpxClient`.
+- Includes `default_result_classifier` and idempotency gating.
+- Run: `uv pip install "redress[httpx]"` then `uv run python docs/snippets/httpx_contrib.py`.
+
 ## HTTPX (sync)
 
 - Snippet: `docs/snippets/httpx_sync_retry.py`

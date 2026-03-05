@@ -83,6 +83,12 @@
 
 - `redress.contrib.fastapi.retry_middleware(...)` (FastAPI/Starlette middleware helper)
 - `redress.contrib.fastapi.default_operation(request)` (method + route path)
+- `redress.contrib.httpx.RetryingHttpxClient(client, policy, ...)` (sync wrapper class)
+- `redress.contrib.httpx.AsyncRetryingHttpxClient(client, policy, ...)` (async wrapper class)
+- `redress.contrib.httpx.request_with_retry(...)` (sync request wrapper)
+- `redress.contrib.httpx.arequest_with_retry(...)` (async request wrapper)
+- `redress.contrib.httpx.default_result_classifier(response)` (429/408/409/5xx mapper with Retry-After support)
+- `redress.contrib.httpx.is_idempotent_method(method)` (HTTP method guard helper)
 
 ## Events
 
