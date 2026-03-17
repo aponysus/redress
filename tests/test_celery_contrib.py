@@ -132,7 +132,11 @@ def test_execute_task_with_retry_accepts_execute_kwargs_provider() -> None:
         policy,
         lambda: "ignored",
         operation=lambda t: f"op:{t.name}",
-        execute_kwargs=lambda _task: {"operation": "custom-op", "sleep": custom_sleep, "tags": {"x": 1}},
+        execute_kwargs=lambda _task: {
+            "operation": "custom-op",
+            "sleep": custom_sleep,
+            "tags": {"x": 1},
+        },
     )
 
     assert policy.calls == [{"operation": "custom-op", "sleep": custom_sleep, "tags": {"x": 1}}]
