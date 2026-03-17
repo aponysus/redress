@@ -70,6 +70,9 @@ httpx = [
 requests = [
     "requests>=2.31.0",
 ]
+celery = [
+    "celery>=5.3.0",
+]
 
 [project.scripts]
 redress = "redress.cli:main"
