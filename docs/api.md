@@ -81,6 +81,11 @@
 
 ## Contrib integrations
 
+- `redress.contrib.aiohttp.AsyncRetryingAiohttpSession(session, policy, ...)` (async session wrapper)
+- `redress.contrib.aiohttp.arequest_with_retry(...)` (async request wrapper)
+- `redress.contrib.aiohttp.default_operation(method, url)` (`METHOD + path`)
+- `redress.contrib.aiohttp.default_result_classifier(response)` (429/408/409/5xx mapper with Retry-After support)
+- `redress.contrib.aiohttp.is_idempotent_method(method)` (HTTP method guard helper)
 - `redress.contrib.asgi.retry_middleware(...)` (generic Starlette-style ASGI middleware helper)
 - `redress.contrib.asgi.default_operation(request)` / `scope_operation(request)` (`METHOD + scope["path"]`)
 - `redress.contrib.asgi.is_idempotent_request(request)` (HTTP idempotency guard helper)
