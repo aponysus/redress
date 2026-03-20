@@ -73,6 +73,23 @@ uv run pre-commit run --all-files
 
 All of these should pass before releasing.
 
+## Good first contributions
+
+Low-friction contributions are useful here. Good starting points include:
+
+- docs clarifications and wording fixes
+- starter-kit or recipe improvements
+- example maintenance and smoke-test coverage
+- small classifier or contrib fixes with focused tests
+
+If you open an issue, it helps to make the scope explicit:
+
+- `bug` for defects in behavior
+- `enhancement` for API or feature additions
+- `docs` for documentation, recipes, examples, and starter kits
+
+Small, well-scoped issues are easier to review and easier to release safely.
+
 ### 3. Tag the release
 
 Tag and push the version:
