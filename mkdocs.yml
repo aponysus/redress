@@ -30,7 +30,10 @@ nav:
   - Why Redress: blog/why-redress.md
   - Getting started: getting-started.md
   - Core guide:
+      - Choose your API: choose-your-api.md
       - Usage: usage.md
+      - Pitfalls and defaults: pitfalls-and-defaults.md
+      - Migration: migration.md
       - API reference: api.md
   - Concepts:
       - Error classes & classifiers: concepts/error-classes.md
@@ -40,12 +43,18 @@ nav:
       - Circuit breakers: concepts/circuit-breakers.md
       - Observability: observability.md
       - Safety and resilience: safety-resilience.md
+      - Stability and compatibility: stability.md
+      - Testing Redress-using code: testing.md
       - Design notes: design_notes.md
   - Recipes:
       - HTTP: recipes/http.md
       - Databases: recipes/db.md
       - Observability: recipes/observability.md
       - Worker/Queue: recipes/workers.md
+  - Starter kits:
+      - HTTP client with sane defaults: starters/http-client.md
+      - Background worker with bounded retries: starters/worker.md
+      - 429-aware client with Retry-After: starters/retry-after-client.md
   - Reference flows: reference-flows.md
   - Examples: examples/index.md
   - Comparison: comparison.md

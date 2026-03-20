@@ -1,5 +1,18 @@
 # Design notes
 
+## Design invariants
+
+The following constraints are part of the library's design, not incidental
+implementation details.
+
+- **Hooks are best-effort:** observability hooks must not break workloads. Hook failures should never change retry outcomes.
+- **Behavior must stay bounded:** deadlines, attempt limits, unknown caps, budgets, and breaker thresholds exist to prevent unbounded failure handling.
+- **Classification is coarse and semantic:** classifiers should map failures into a small stable set of policy-relevant classes, not mirror every domain taxonomy.
+- **Structured outcomes are first-class:** `execute()` and `RetryOutcome` are part of the intended control-flow surface, not a second-tier escape hatch.
+- **Sync and async should preserve semantics:** the async API should differ in mechanics, not in the meaning of retries, stop reasons, hooks, and outcomes.
+- **Circuit breakers compose with retries:** breaker decisions and retry decisions should use the same classification model and the breaker should observe final operation outcomes, not per-attempt noise.
+- **Observability must stay low-cardinality:** tags and event fields should stay useful for production systems and avoid payload-style data.
+
 - **Unified policy model:** `Policy` / `AsyncPolicy` are the primary containers. Retry is one optional component (`Retry` / `AsyncRetry`) rather than the only execution model.
 - **Backward-compatible sugar:** `RetryPolicy` and `AsyncRetryPolicy` remain convenience wrappers for retry-only use cases, but they intentionally mirror the unified policy semantics.
 - **Circuit breakers wrap operations, not attempts:** Breakers observe the final operation outcome after retry processing so fail-fast behavior and retry behavior stay coordinated.

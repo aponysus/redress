@@ -1,5 +1,15 @@
 # Examples & integrations
 
+Verified examples:
+
+- `docs/snippets/async_worker_retry.py`
+- `docs/snippets/async_worker_abort.py`
+- `docs/snippets/bench_retry.py`
+
+These snippets are exercised by smoke tests. Examples that depend on optional
+third-party services, credentials, or external runtimes remain illustrative
+unless noted otherwise.
+
 ## HTTPX contrib wrappers (sync + async)
 
 - Snippet: `docs/snippets/httpx_contrib.py`
@@ -58,12 +68,14 @@
 ## Async worker loop
 
 - Snippet: `docs/snippets/async_worker_retry.py`
+- Verified: smoke-tested in the test suite.
 - Simulates a message worker with retries and metrics per message.
 - Run: `uv run python docs/snippets/async_worker_retry.py`.
 
 ## Async worker with cooperative abort
 
 - Snippet: `docs/snippets/async_worker_abort.py`
+- Verified: smoke-tested in the test suite.
 - Shows `abort_if` for shutdown and `on_log` for durable attempt logging.
 - Run: `uv run python docs/snippets/async_worker_abort.py`.
 
@@ -156,5 +168,6 @@ app.middleware("http")(
 ## Benchmarks (pyperf)
 
 - Snippet: `docs/snippets/bench_retry.py`
+- Verified: benchmark functions are smoke-tested in the test suite.
 - Measures bare sync retry overhead with pyperf runners.
 - Run: `uv pip install .[dev]` then `uv run python docs/snippets/bench_retry.py`.
