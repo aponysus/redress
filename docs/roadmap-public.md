@@ -3,51 +3,46 @@
 !!! note
     This roadmap is directional, not a promise. Dates are targets and may shift.
 
-## v1.0.x Hardening (Maintenance)
+## Delivered through v1.2
 
-Focus: correctness and reliability fixes for the existing retry engine.
+Recent releases established the current execution model and integration surface:
 
-- Use monotonic time for deadlines.
-- Do not retry cancellation/system-exiting exceptions.
-- Tighten HTTP status coercion in `http_classifier`.
-- Clarify classifier heuristics and safety guidance in docs.
+- `Policy` / `Retry` and `AsyncPolicy` / `AsyncRetry` as the canonical API
+- `RetryPolicy` / `AsyncRetryPolicy` as backward-compatible sugar
+- Circuit breakers with state transitions and events
+- Result-based retries and structured `Classification`
+- Context-aware strategies and Retry-After-aware helpers
+- Stable stop reasons and `RetryOutcome`
+- Optional timeline capture
+- Retry budgets
+- Per-attempt timeouts
+- Injectable sleeper / before-sleep hooks
+- Built-in extras for common stacks
+- Contrib integrations for HTTP clients, ASGI/FastAPI, gRPC, Celery, and observability backends
 
-## v1.1 (Q1 2026) Policy, Breakers, and Practical Ergonomics
+## Current maintenance focus
 
-Focus: a coherent execution model plus integration ergonomics that avoid bespoke glue.
+Focus: correctness, docs clarity, and keeping the existing API surface coherent.
 
-- Introduce unified `Policy` + `Retry` components (sync + async), keeping `RetryPolicy` as convenient sugar.
-- Add a first-class `CircuitBreaker` with state transitions and events.
-- Result-based retries (`result_classifier`) for HTTP/SDK responses without forcing exceptions.
-- Classification context and strategy integration (classifiers can emit hints; strategies can consume them).
-- Retry-After support as a built-in strategy helper.
-- Cleaner outcome surface: stable stop reasons and typed terminal outcomes (attempts/last class).
-- Timeline capture (optional) for per-attempt debugging without custom hooks.
-- Observability improvements and an OpenTelemetry contrib hook.
-- Docs refresh with end-to-end recipes (HTTP calls, worker loops, graceful shutdown).
+- Reliability fixes in the retry engine and integrations
+- Documentation cleanup around the unified policy model
+- Better migration guidance for users coming from retry-only libraries
+- Performance tuning and troubleshooting guidance
 
-## v1.2 (Q1 2026) Built-in Classifiers, Recipes, and Advanced Patterns
+## Next expansion areas
 
-Focus: reduce bespoke wiring for common stacks, plus production guardrails.
+### Framework and ecosystem integrations
 
-- Built-in classifiers for common libraries (aiohttp, grpc, boto3/botocore, redis, etc.) via extras.
-- Classifier authoring guidance and integration recipes.
-- Additional small strategy helpers driven by real-world patterns.
-- Retry budgets to prevent retry storms.
-- Testing utilities for deterministic retries.
-- Per-attempt timeouts in addition to overall deadlines.
-- Injectable sleeper / before-sleep hook to integrate with leases and external schedulers.
+- Additional framework integrations where they simplify adoption materially
+- More turnkey examples around queue/worker and service patterns
+- Tightening contrib contracts and compatibility expectations as the surface grows
 
-## v1.3+ (Q2 2026+) Ecosystem Expansion
+### Advanced execution models
 
-Focus: optional integrations and higher-level execution models.
-
-- Framework integrations (Django, Flask, Celery, FastAPI).
-- Contrib observability modules (Prometheus, Datadog, Sentry).
-- Non-blocking / externally scheduled retry execution (advanced).
-- Experimental hedging support (async-first).
+- Non-blocking / externally scheduled retry execution patterns
+- Experimental hedging support (async-first)
 
 ## Ongoing Documentation
 
-- Migration guides (Tenacity, Backoff).
-- Performance tuning and troubleshooting guides.
+- Migration guides (Tenacity, Backoff, retry-only wrappers to `Policy`)
+- Performance tuning and troubleshooting guides

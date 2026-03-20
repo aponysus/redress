@@ -47,6 +47,8 @@ policy = Policy(
 
 - Site: https://aponysus.github.io/redress/
 - Getting started: https://aponysus.github.io/redress/getting-started/
+- Why Redress: https://aponysus.github.io/redress/blog/why-redress/
+- API reference: https://aponysus.github.io/redress/api/
 
 ## Installation
 
@@ -118,6 +120,26 @@ with policy.context(operation="batch") as retry:
     retry(task1)
     retry(task2)
 ```
+
+### Retry budget quick start
+
+```python
+from redress import Budget, Policy, Retry, default_classifier
+from redress.strategies import decorrelated_jitter
+
+budget = Budget(max_retries=20, window_s=60.0)
+
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=decorrelated_jitter(max_s=2.0),
+        budget=budget,
+    ),
+)
+```
+
+Use budgets when many callers or operations share the same unhealthy dependency
+and you want to bound aggregate retry volume, not just per-call retries.
 
 ### Async quick start
 

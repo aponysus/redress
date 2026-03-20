@@ -81,6 +81,11 @@
 
 ## Contrib integrations
 
+Contrib modules are optional integrations built on top of the core retry and
+policy APIs. They are supported public APIs, but they also track third-party
+ecosystems that evolve independently. Prefer the documented helper functions
+and wrappers over depending on internal implementation details.
+
 - `redress.contrib.aiohttp.AsyncRetryingAiohttpSession(session, policy, ...)` (async session wrapper)
 - `redress.contrib.aiohttp.arequest_with_retry(...)` (async request wrapper)
 - `redress.contrib.aiohttp.default_operation(method, url)` (`METHOD + path`)

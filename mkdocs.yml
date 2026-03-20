@@ -1,5 +1,5 @@
 site_name: redress
-site_description: Smarter, classifier-driven retries for Python
+site_description: Policy-driven failure handling for Python services
 site_url: https://aponysus.github.io/redress/
 repo_name: aponysus/redress
 repo_url: https://github.com/aponysus/redress
