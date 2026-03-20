@@ -9,7 +9,9 @@ from ..policy import MetricHook
 
 
 class DatadogStatsd(Protocol):
-    def increment(self, metric: str, value: int = 1, *, tags: Sequence[str] | None = None) -> None: ...
+    def increment(
+        self, metric: str, value: int = 1, *, tags: Sequence[str] | None = None
+    ) -> None: ...
 
     def histogram(
         self, metric: str, value: float, *, tags: Sequence[str] | None = None

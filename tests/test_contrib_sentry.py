@@ -71,9 +71,7 @@ def test_sentry_hooks_add_breadcrumbs_and_capture_terminal_failures() -> None:
             },
         },
     ]
-    assert client.messages == [
-        {"message": "redress.max_attempts_exceeded", "level": "error"}
-    ]
+    assert client.messages == [{"message": "redress.max_attempts_exceeded", "level": "error"}]
 
 
 def test_sentry_default_import(monkeypatch) -> None:

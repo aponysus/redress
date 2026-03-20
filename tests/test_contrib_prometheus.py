@@ -46,7 +46,10 @@ def test_prometheus_hooks_emit_counter_and_retry_histogram() -> None:
 
     assert counter.calls == [
         {"labels": {"event": "retry", "class": "RATE_LIMIT", "operation": "fetch"}, "amount": 1.0},
-        {"labels": {"event": "success", "class": "RATE_LIMIT", "operation": "fetch"}, "amount": 1.0},
+        {
+            "labels": {"event": "success", "class": "RATE_LIMIT", "operation": "fetch"},
+            "amount": 1.0,
+        },
     ]
     assert histogram.calls == [
         {"labels": {"class": "RATE_LIMIT", "operation": "fetch"}, "amount": 0.5}
