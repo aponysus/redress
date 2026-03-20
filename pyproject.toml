@@ -1,6 +1,6 @@
 [project]
 name = "redress"
-version = "1.2.0"
+version = "1.3.0"
 description = "Policy-driven failure handling for Python services."
 readme = "README.md"
 requires-python = ">=3.11"
