@@ -71,13 +71,26 @@ def test_grpc_classifier_sync_rpc_error_status_mappings(monkeypatch) -> None:
 
     monkeypatch.setattr(grpc_extra.importlib, "import_module", fake_import)
 
-    assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.RESOURCE_EXHAUSTED)) is ErrorClass.RATE_LIMIT
+    assert (
+        grpc_extra.grpc_classifier(_RpcError(_StatusCode.RESOURCE_EXHAUSTED))
+        is ErrorClass.RATE_LIMIT
+    )
     assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.UNAVAILABLE)) is ErrorClass.TRANSIENT
-    assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.DEADLINE_EXCEEDED)) is ErrorClass.TRANSIENT
+    assert (
+        grpc_extra.grpc_classifier(_RpcError(_StatusCode.DEADLINE_EXCEEDED)) is ErrorClass.TRANSIENT
+    )
     assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.UNAUTHENTICATED)) is ErrorClass.AUTH
-    assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.PERMISSION_DENIED)) is ErrorClass.PERMISSION
-    assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.INVALID_ARGUMENT)) is ErrorClass.PERMANENT
-    assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.FAILED_PRECONDITION)) is ErrorClass.PERMANENT
+    assert (
+        grpc_extra.grpc_classifier(_RpcError(_StatusCode.PERMISSION_DENIED))
+        is ErrorClass.PERMISSION
+    )
+    assert (
+        grpc_extra.grpc_classifier(_RpcError(_StatusCode.INVALID_ARGUMENT)) is ErrorClass.PERMANENT
+    )
+    assert (
+        grpc_extra.grpc_classifier(_RpcError(_StatusCode.FAILED_PRECONDITION))
+        is ErrorClass.PERMANENT
+    )
     assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.OUT_OF_RANGE)) is ErrorClass.PERMANENT
     assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.NOT_FOUND)) is ErrorClass.PERMANENT
     assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.INTERNAL)) is ErrorClass.SERVER_ERROR
@@ -111,8 +124,14 @@ def test_grpc_classifier_returns_unknown_when_code_missing_or_noncallable(monkey
     monkeypatch.setattr(grpc_extra.importlib, "import_module", fake_import)
 
     assert grpc_extra.grpc_classifier(_RpcError(None)) is ErrorClass.UNKNOWN
-    assert grpc_extra.grpc_classifier(_RpcError(_StatusCode.UNAVAILABLE, callable_code=False)) is ErrorClass.UNKNOWN
-    assert grpc_extra.grpc_classifier(_AioRpcError(_StatusCode.UNAVAILABLE, callable_code=False)) is ErrorClass.UNKNOWN
+    assert (
+        grpc_extra.grpc_classifier(_RpcError(_StatusCode.UNAVAILABLE, callable_code=False))
+        is ErrorClass.UNKNOWN
+    )
+    assert (
+        grpc_extra.grpc_classifier(_AioRpcError(_StatusCode.UNAVAILABLE, callable_code=False))
+        is ErrorClass.UNKNOWN
+    )
 
 
 def test_map_grpc_status_handles_missing_status_code_object() -> None:
@@ -120,4 +139,3 @@ def test_map_grpc_status_handles_missing_status_code_object() -> None:
         StatusCode = None
 
     assert grpc_extra._map_grpc_status(_MissingStatusGrpc, object()) is ErrorClass.UNKNOWN
-
