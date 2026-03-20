@@ -2,6 +2,12 @@
 
 See also: [HTTP recipes](http.md), [DB recipes](db.md), [Worker recipes](workers.md).
 
+Read this page when you want backend-agnostic observability patterns and
+operational guidance for tags, stop reasons, and hook usage in real systems.
+
+For the observability contract itself, see [Observability](../observability.md).
+For the canonical core API shape, see [Usage](../usage.md).
+
 Redress emits lifecycle events via `on_metric` and `on_log`. These hooks are designed
 for metrics/logging without coupling to a specific backend.
 

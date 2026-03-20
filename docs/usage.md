@@ -1,4 +1,11 @@
-# redress usage patterns
+# Core usage guide
+
+Read this page when you want the canonical way to use redress itself: choosing
+between `Policy`, `RetryPolicy`, and `@retry`; configuring retries, budgets,
+timeouts, hooks, and outcomes; and understanding the preferred core API shape.
+
+For mental models and semantics, read the pages under `Concepts`. For
+environment-specific application patterns, use `Recipes`.
 
 ## Unified Policy model
 
@@ -26,6 +33,10 @@ policy = Policy(
     )
 )
 ```
+
+Treat this page as the canonical source for core API usage. Other sections may
+show smaller or domain-specific examples, but this is the preferred starting
+point for new integrations.
 
 ## Circuit breakers
 

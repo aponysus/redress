@@ -1,5 +1,11 @@
 # Circuit breakers
 
+Read this page when you want the breaker mental model: states, thresholds, and
+how breaker decisions compose with retries inside the unified policy container.
+
+For the canonical configuration pattern, see [Usage](../usage.md). For
+downstream-specific application patterns, start in `Recipes`.
+
 Circuit breakers are a first-class part of the unified `Policy` model. They use the
 same classification that drives retries, so you get consistent semantics across
 retries and fail-fast behavior.

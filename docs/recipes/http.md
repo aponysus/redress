@@ -2,6 +2,12 @@
 
 See also: [DB recipes](db.md), [Observability recipes](observability.md), [Worker recipes](workers.md).
 
+Read this page when you want to apply redress to HTTP clients and response
+semantics. This section is intentionally domain-specific.
+
+For the core API surface itself, see [Usage](../usage.md). For classification
+semantics, see [Classification](../concepts/classification.md).
+
 This recipe shows two common patterns:
 
 1) exception-based HTTP retries (raise for status)

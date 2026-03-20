@@ -2,6 +2,12 @@
 
 See also: [HTTP recipes](http.md), [Observability recipes](observability.md), [Worker recipes](workers.md).
 
+Read this page when you want database-oriented application patterns such as
+SQLSTATE classification and pyodbc-specific handling.
+
+For the core API surface itself, see [Usage](../usage.md). For classifier
+design principles, see [Classification](../concepts/classification.md).
+
 SQLSTATE-based classifiers are a reliable way to handle database errors across
 pyodbc, asyncpg, psycopg, and other DBAPI-style drivers.
 

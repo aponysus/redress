@@ -1,5 +1,11 @@
 # Policies & decorators
 
+Read this page when you want the execution model: how `Policy`, `Retry`,
+`RetryPolicy`, and `@retry` relate, and why the unified policy container is the
+canonical abstraction.
+
+For the preferred copy/paste usage patterns, see [Usage](../usage.md).
+
 ## Policies
 
 `Policy` and `AsyncPolicy` are the unified containers. Configure retries with

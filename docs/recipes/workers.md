@@ -1,5 +1,12 @@
 # Worker / queue retries
 
+Read this page when you want queue, worker, and externally scheduled retry
+patterns. This is where application-level operational flows belong.
+
+For the core retry API and outcome surface, see [Usage](../usage.md). For the
+underlying semantics of deferred execution, see the relevant pages in
+`Concepts`.
+
 This recipe shows a simple worker loop with retries, backpressure via budgets,
 and cooperative shutdown.
 

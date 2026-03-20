@@ -7,6 +7,7 @@ docs_dir: docs
 theme:
   name: material
   features:
+    - navigation.expand
     - navigation.sections
     - navigation.top
     - navigation.tracking
@@ -22,11 +23,15 @@ markdown_extensions:
       base_path: "."
   - pymdownx.highlight
   - pymdownx.superfences
+extra_css:
+  - stylesheets/nav-hierarchy.css
 nav:
   - Overview: index.md
   - Why Redress: blog/why-redress.md
-  - Comparison: comparison.md
   - Getting started: getting-started.md
+  - Core guide:
+      - Usage: usage.md
+      - API reference: api.md
   - Concepts:
       - Error classes & classifiers: concepts/error-classes.md
       - Classification: concepts/classification.md
@@ -41,9 +46,8 @@ nav:
       - Databases: recipes/db.md
       - Observability: recipes/observability.md
       - Worker/Queue: recipes/workers.md
-  - Usage: usage.md
   - Reference flows: reference-flows.md
   - Examples: examples/index.md
-  - API reference: api.md
+  - Comparison: comparison.md
   - Roadmap: roadmap-public.md
   - Changelog: changelog.md

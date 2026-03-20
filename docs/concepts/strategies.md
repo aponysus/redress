@@ -1,5 +1,12 @@
 # Retry strategies
 
+Read this page when you want to understand backoff semantics and strategy
+shapes. It explains what strategy functions receive and how the built-ins
+behave.
+
+For the canonical configuration patterns, see [Usage](../usage.md). For
+HTTP- or DB-specific examples, see the relevant pages in `Recipes`.
+
 Strategies can use one of two signatures:
 
 - Context-aware: `strategy(ctx: BackoffContext) -> float`

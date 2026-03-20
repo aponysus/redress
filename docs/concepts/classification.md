@@ -1,5 +1,12 @@
 # Classification & classifier authoring
 
+Read this page when you want the mental model behind classification: what a
+classifier is, how exception and result classification interact, and what makes
+a classifier safe and stable in production.
+
+For the canonical core API usage pattern, see [Usage](../usage.md). For
+copy/paste domain examples, see [Recipes](../recipes/http.md).
+
 Classification is the core of redress. A classifier maps a failure into a small, fixed
 `ErrorClass` (or a richer `Classification`), and that classification drives retries,
 backoff, limits, and circuit breaker decisions.

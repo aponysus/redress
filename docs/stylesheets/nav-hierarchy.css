@@ -1,0 +1,33 @@
+.md-nav--primary .md-nav__item--section > .md-nav__link,
+.md-nav--primary .md-nav__item--section > label.md-nav__link {
+  margin-top: 0.9rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  opacity: 0.8;
+  text-transform: uppercase;
+}
+
+.md-nav--primary .md-nav__item--section > .md-nav {
+  border-left: 0.12rem solid var(--md-default-fg-color--lightest);
+  margin-left: 0.45rem;
+  padding-left: 0.7rem;
+}
+
+.md-nav--primary .md-nav__item--nested > .md-nav {
+  border-left: 0.08rem solid color-mix(in srgb, var(--md-accent-fg-color) 22%, transparent);
+  margin-left: 0.35rem;
+  padding-left: 0.65rem;
+}
+
+.md-nav--primary .md-nav__item .md-nav__link {
+  border-radius: 0.24rem;
+}
+
+.md-nav--primary .md-nav__item .md-nav__link:hover {
+  background: color-mix(in srgb, var(--md-accent-fg-color) 8%, transparent);
+}
+
+.md-nav--primary .md-nav__item .md-nav__link--active {
+  font-weight: 700;
+}
