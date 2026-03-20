@@ -48,6 +48,7 @@ policy = Policy(
 - Site: https://aponysus.github.io/redress/
 - Getting started: https://aponysus.github.io/redress/getting-started/
 - Why Redress: https://aponysus.github.io/redress/blog/why-redress/
+- Comparison: https://aponysus.github.io/redress/comparison/
 - API reference: https://aponysus.github.io/redress/api/
 
 ## Installation
@@ -93,7 +94,25 @@ result = policy.call(flaky)
 # UNKNOWN failures are tightly capped.
 ```
 
-### Decorator quick start
+Use `Policy(retry=Retry(...))` as the default entry point. It is the canonical
+API for combining retries, circuit breakers, budgets, shared hooks, and
+structured outcomes.
+
+### Retry-only shortcuts
+
+`RetryPolicy` is still available when you only need retry behavior:
+
+```python
+from redress import RetryPolicy, default_classifier
+from redress.strategies import decorrelated_jitter
+
+policy = RetryPolicy(
+    classifier=default_classifier,
+    strategy=decorrelated_jitter(max_s=3.0),
+)
+```
+
+The decorator is the smallest entry point:
 
 ```python
 from redress import retry, default_classifier
@@ -120,6 +139,9 @@ with policy.context(operation="batch") as retry:
     retry(task1)
     retry(task2)
 ```
+
+If you need circuit breakers, budgets, shared execution settings, or richer
+integration points, move up to `Policy` / `AsyncPolicy`.
 
 ### Retry budget quick start
 
@@ -160,6 +182,12 @@ async def flaky_async():
 
 asyncio.run(async_policy.call(flaky_async))
 ```
+
+## Choosing the API surface
+
+- Use `Policy` / `AsyncPolicy` by default.
+- Use `RetryPolicy` / `AsyncRetryPolicy` for retry-only convenience.
+- Use `@retry` when decorator ergonomics matter more than explicit policy objects.
 
 ## Error Classes & Classification
 
