@@ -110,6 +110,9 @@
 - `redress.contrib.grpc.aio_unary_unary_client_interceptor(...)` (async unary-unary client interceptor factory)
 - `redress.contrib.grpc.default_operation(call_details)` (operation tag from RPC method path)
 - `redress.contrib.grpc.rpc_service_name(call_details)` / `rpc_method_name(call_details)` (RPC name helpers)
+- `redress.contrib.prometheus.prometheus_hooks(events, retry_sleep_seconds=None)` (Prometheus metric hook adapter)
+- `redress.contrib.datadog.datadog_hooks(statsd=None, prefix="redress", constant_tags=None)` (DogStatsD metric hook adapter)
+- `redress.contrib.sentry.sentry_hooks(sentry=None, capture_terminal=True)` (Sentry breadcrumb/log hook adapter)
 - Note: ASGI contrib targets `request/call_next` middleware shape, not raw `(scope, receive, send)`.
 
 ## Events

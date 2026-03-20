@@ -25,6 +25,24 @@
 - Uses `http_classifier` with requests and emits metrics.
 - Run: `uv pip install requests` then `uv run python docs/snippets/requests_retry.py`.
 
+## Prometheus contrib hook
+
+- Snippet: `docs/snippets/prometheus_contrib.py`
+- Uses `redress.contrib.prometheus.prometheus_hooks` with event and retry-sleep metrics.
+- Run: `uv pip install "redress[prometheus]"` then `uv run python docs/snippets/prometheus_contrib.py`.
+
+## Datadog contrib hook
+
+- Snippet: `docs/snippets/datadog_contrib.py`
+- Uses `redress.contrib.datadog.datadog_hooks` to emit DogStatsD counters and retry-delay histograms.
+- Run: `uv pip install "redress[datadog]"` then `uv run python docs/snippets/datadog_contrib.py`.
+
+## Sentry contrib hook
+
+- Snippet: `docs/snippets/sentry_contrib.py`
+- Uses `redress.contrib.sentry.sentry_hooks` to record breadcrumbs and terminal failure messages.
+- Run: `uv pip install "redress[sentry]"` then `uv run python docs/snippets/sentry_contrib.py`.
+
 ## HTTPX (async)
 
 - Snippet: `docs/snippets/httpx_async_retry.py`

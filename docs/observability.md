@@ -73,6 +73,68 @@ policy.call(
 
 Counter should expose `.labels(event=..., **tags).inc()`.
 
+## Prometheus contrib hook
+
+```python
+from prometheus_client import Counter, Histogram
+from redress.contrib.prometheus import prometheus_hooks
+
+event_counter = Counter(
+    "redress_events_total",
+    "redress retry lifecycle events",
+    ["event", "class", "operation"],
+)
+retry_sleep = Histogram(
+    "redress_retry_sleep_seconds",
+    "scheduled retry delays",
+    ["class", "operation"],
+)
+
+hooks = prometheus_hooks(
+    events=event_counter,
+    retry_sleep_seconds=retry_sleep,
+)
+
+policy.call(lambda: do_work(), **hooks, operation="sync_user")
+```
+
+`prometheus_hooks` increments an event counter for every lifecycle event and,
+when a histogram is provided, observes retry sleep durations for `retry` events.
+
+## Datadog contrib hook
+
+```python
+from datadog import statsd
+from redress.contrib.datadog import datadog_hooks
+
+hooks = datadog_hooks(
+    statsd=statsd,
+    prefix="svc.redress",
+    constant_tags=["env:prod"],
+)
+
+policy.call(lambda: do_work(), **hooks, operation="sync_user")
+```
+
+`datadog_hooks` emits:
+- `{prefix}.events` with tags like `event:retry`, `class:RATE_LIMIT`, `operation:sync_user`
+- `{prefix}.retry.sleep_seconds` histograms for retry delays
+
+## Sentry contrib hook
+
+```python
+import sentry_sdk
+from redress.contrib.sentry import sentry_hooks
+
+sentry_sdk.init(dsn="...")
+hooks = sentry_hooks(sentry=sentry_sdk)
+
+policy.call(lambda: do_work(), **hooks, operation="sync_user")
+```
+
+`sentry_hooks` turns hook log events into breadcrumbs and captures terminal
+failure events as Sentry messages by default.
+
 ## OpenTelemetry hooks
 
 ```python
