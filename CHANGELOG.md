@@ -2,6 +2,19 @@
 
 Release notes are maintained here.
 
+## [1.3.0] - 2026-03-20
+### Added
+- New contrib integrations for `aiohttp`, `requests`, and Celery.
+- New observability contrib modules for Prometheus, Datadog, and Sentry.
+- Optional dependency groups for `requests`, `celery`, `prometheus`, `datadog`, and `sentry`.
+- Additional tests across contrib and extras modules, including targeted coverage for `pyodbc` and `grpc` extras.
+
+### Docs
+- Repositioned `Policy(retry=Retry(...))` as the canonical API in Getting Started and README.
+- Refreshed design notes and public roadmap to match the shipped unified policy model and current roadmap state.
+- Clarified contrib-module stability guidance in the API reference.
+- Restructured docs IA around `Core guide`, `Concepts`, and `Recipes`, with clearer page framing and improved nav hierarchy styling.
+
 ## [1.2.0] - 2026-02-02
 ### Added
 - Optional classifier helpers via extras: `aiohttp`, `grpc`, `boto3/botocore`, `redis`, `urllib3`, and `pyodbc`.
