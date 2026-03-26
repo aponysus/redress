@@ -15,6 +15,10 @@ async def _no_async_sleep(_: float) -> None:
     return None
 
 
+def _no_sleep(_: float) -> None:
+    return None
+
+
 def test_async_worker_retry_snippet_smoke(monkeypatch, capsys) -> None:
     monkeypatch.setattr(retry_helpers.asyncio, "sleep", _no_async_sleep)
     namespace = runpy.run_path(str(_snippet_path("async_worker_retry.py")))
@@ -44,3 +48,16 @@ def test_bench_retry_snippet_smoke() -> None:
 
     namespace["bench_success"](loop_count=3)
     namespace["bench_single_retry"](loop_count=3)
+
+
+def test_decorator_retry_snippet_smoke(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(retry_helpers.time, "sleep", _no_sleep)
+    monkeypatch.setattr(retry_helpers.asyncio, "sleep", _no_async_sleep)
+    namespace = runpy.run_path(str(_snippet_path("decorator_retry.py")))
+    monkeypatch.setattr(namespace["asyncio"], "sleep", _no_async_sleep)
+
+    namespace["main"]()
+
+    output = capsys.readouterr().out
+    assert "Sync: sync-ok" in output
+    assert "Async: async-ok" in output
