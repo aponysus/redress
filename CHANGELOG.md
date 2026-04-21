@@ -2,6 +2,19 @@
 
 Release notes are maintained here.
 
+## [1.4.0] - 2026-04-21
+### Added
+- New provider-specific contrib integrations for OpenAI and Anthropic via `redress.contrib.openai` and `redress.contrib.anthropic`.
+- OpenAI and Anthropic classifier helpers (`openai_classifier`, `anthropic_classifier`) that map SDK exceptions into redress `ErrorClass` values and preserve provider retry hints.
+- OpenAI- and Anthropic-aware backoff helpers (`openai_aware_backoff(...)`, `anthropic_aware_backoff(...)`) built on top of `retry_after_or(...)`.
+- Optional dependency groups for `openai` and `anthropic`.
+- Drift/conformance tests against the installed OpenAI and Anthropic SDK exception hierarchies.
+
+### Changed
+- CI now installs the OpenAI and Anthropic extras so provider contrib coverage runs in the main test matrix.
+- Public landing-page copy now foregrounds the provider contrib modules and current integration surface instead of older extras-first positioning.
+
+
 ## [1.3.0] - 2026-03-20
 ### Added
 - New contrib integrations for `aiohttp`, `requests`, and Celery.
