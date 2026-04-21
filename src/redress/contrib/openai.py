@@ -234,11 +234,7 @@ def _clamp_retry_after(max_s: float, strategy: Callable[[BackoffContext], float]
 
         updated = replace(
             ctx,
-            classification=Classification(
-                klass=ctx.classification.klass,
-                retry_after_s=clamped,
-                details=ctx.classification.details,
-            ),
+            classification=replace(ctx.classification, retry_after_s=clamped),
         )
         return strategy(updated)
 

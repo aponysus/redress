@@ -266,17 +266,14 @@ def test_anthropic_classifier_handles_malformed_body_and_headers(
     assert anthropic_extra.anthropic_classifier(status_err) is ErrorClass.SERVER_ERROR
 
 
-def test_parse_rfc3339_reset() -> None:
+def test_parse_rfc3339_reset(monkeypatch: pytest.MonkeyPatch) -> None:
     now = datetime(2026, 1, 1, tzinfo=UTC)
     future = now + timedelta(seconds=5)
-    original_now = anthropic_extra._now_utc
-    try:
-        anthropic_extra._now_utc = lambda: now
-        assert anthropic_extra._parse_rfc3339_reset(future.isoformat()) == 5.0
-        assert anthropic_extra._parse_rfc3339_reset("2026-01-01T00:00:05Z") == 5.0
-        assert anthropic_extra._parse_rfc3339_reset("junk") is None
-    finally:
-        anthropic_extra._now_utc = original_now
+    monkeypatch.setattr(anthropic_extra, "_now_utc", lambda: now)
+
+    assert anthropic_extra._parse_rfc3339_reset(future.isoformat()) == 5.0
+    assert anthropic_extra._parse_rfc3339_reset("2026-01-01T00:00:05Z") == 5.0
+    assert anthropic_extra._parse_rfc3339_reset("junk") is None
 
 
 def test_anthropic_aware_backoff_uses_fallback_without_retry_hint() -> None:
