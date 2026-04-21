@@ -115,6 +115,8 @@ and wrappers over depending on internal implementation details.
 - `redress.contrib.grpc.aio_unary_unary_client_interceptor(...)` (async unary-unary client interceptor factory)
 - `redress.contrib.grpc.default_operation(call_details)` (operation tag from RPC method path)
 - `redress.contrib.grpc.rpc_service_name(call_details)` / `rpc_method_name(call_details)` (RPC name helpers)
+- `redress.contrib.openai.openai_classifier(exc)` / `openai_aware_backoff(...)` (OpenAI SDK exception mapping + Retry-After-aware backoff helper; use `OpenAI(max_retries=0)`)
+- `redress.contrib.anthropic.anthropic_classifier(exc)` / `anthropic_aware_backoff(...)` (Anthropic SDK exception mapping + Retry-After-aware backoff helper; use `Anthropic(max_retries=0)`)
 - `redress.contrib.prometheus.prometheus_hooks(events, retry_sleep_seconds=None)` (Prometheus metric hook adapter)
 - `redress.contrib.datadog.datadog_hooks(statsd=None, prefix="redress", constant_tags=None)` (DogStatsD metric hook adapter)
 - `redress.contrib.sentry.sentry_hooks(sentry=None, capture_terminal=True)` (Sentry breadcrumb/log hook adapter)

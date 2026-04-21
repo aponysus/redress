@@ -350,3 +350,49 @@ def test_anthropic_aware_backoff_still_respects_remaining_deadline(
         assert strat(ctx) == 10.0
     finally:
         monkeypatch.setattr(strategies.random, "uniform", original_uniform)
+
+
+def test_anthropic_conformance_known_exception_hierarchy() -> None:
+    anthropic = pytest.importorskip("anthropic")
+
+    def walk(root: type[BaseException]) -> set[str]:
+        names: set[str] = set()
+        stack = [root]
+        seen: set[type[BaseException]] = set()
+        while stack:
+            current = stack.pop()
+            for child in current.__subclasses__():
+                if child in seen:
+                    continue
+                seen.add(child)
+                names.add(child.__name__)
+                stack.append(child)
+        return names
+
+    expected = {
+        "APIConnectionError",
+        "APIError",
+        "APIResponseValidationError",
+        "APIStatusError",
+        "APITimeoutError",
+        "AuthenticationError",
+        "BadRequestError",
+        "ConflictError",
+        "DeadlineExceededError",
+        "InternalServerError",
+        "MissingDependencyError",
+        "MutuallyExclusiveAuthError",
+        "NotFoundError",
+        "OverloadedError",
+        "PermissionDeniedError",
+        "RateLimitError",
+        "RequestTooLargeError",
+        "ServiceUnavailableError",
+        "StreamAlreadyConsumed",
+        "UnprocessableEntityError",
+    }
+
+    discovered = walk(anthropic.AnthropicError)
+    assert discovered <= expected, (
+        f"Unhandled Anthropic exception subclasses: {sorted(discovered - expected)}"
+    )

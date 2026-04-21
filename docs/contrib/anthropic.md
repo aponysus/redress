@@ -2,7 +2,7 @@
 
 `redress.contrib.anthropic` provides Anthropic-specific retry helpers for the Python SDK.
 
-Phase 2 scope:
+This module currently exposes:
 
 - `anthropic_classifier`
 - `anthropic_aware_backoff(...)`
@@ -57,4 +57,35 @@ response = policy.call(
 - `429` responses with `Retry-After` or `anthropic-ratelimit-*-reset` hints populate `Classification.retry_after_s`.
 - `overloaded_error` and the dedicated overloaded/service-unavailable SDK exceptions map to `SERVER_ERROR`.
 
-Streaming guidance, full mapping tables, and broader docs integration can expand in later phases.
+## Mapping summary
+
+| Anthropic SDK error or status | redress class | Notes |
+| --- | --- | --- |
+| `AuthenticationError` | `AUTH` | Credentials or auth configuration failed. |
+| `PermissionDeniedError` | `PERMISSION` | Caller is authenticated but not allowed. |
+| `NotFoundError` | `PERMANENT` | Requested resource or endpoint does not exist. |
+| `BadRequestError` | `PERMANENT` | Invalid request payload. |
+| `RequestTooLargeError` | `PERMANENT` | Current classifier treats oversized requests as non-retryable. |
+| `UnprocessableEntityError` | `PERMANENT` | Request was syntactically valid but rejected as unprocessable. |
+| `ConflictError` | `CONCURRENCY` | Current implementation maps `409` to redress concurrency semantics. |
+| `RateLimitError` | `RATE_LIMIT` | `Retry-After` and `anthropic-ratelimit-*-reset` hints are preserved when present. |
+| `OverloadedError` | `SERVER_ERROR` | Provider overload is treated as a server-side failure. |
+| `ServiceUnavailableError` | `SERVER_ERROR` | Retry hint headers are preserved when present. |
+| `DeadlineExceededError` | `SERVER_ERROR` | Provider-side deadline failures are treated as upstream server failures. |
+| `InternalServerError` | `SERVER_ERROR` | Retry hint headers are preserved when present. |
+| `APITimeoutError` | `TRANSIENT` | Transport timeout. |
+| `APIConnectionError` | `TRANSIENT` | Connection setup or network failure. |
+| `APIResponseValidationError` | `PERMANENT` | SDK could not validate the response shape. |
+| `APIStatusError` with `413` | `PERMANENT` | Oversized request fallback when the dedicated exception type is not used. |
+| `APIStatusError` with `408` or `425` | `TRANSIENT` | Retry hint headers are propagated into `Classification.retry_after_s`. |
+| `APIStatusError` with `500`, `503`, `504`, or `529` | `SERVER_ERROR` | Includes overload-style server failures. |
+| `APIStatusError` with `error.type == "overloaded_error"` | `SERVER_ERROR` | Body-based overload mapping, even when the status wrapper is generic. |
+| Other `AnthropicError` subclasses | `UNKNOWN` | Fallback bucket until the SDK or classifier is updated. |
+| Non-Anthropic exceptions | `default_classifier(...)` | Lets redress handle generic Python and transport errors normally. |
+
+## Streaming
+
+- Retry stream creation, not partial stream consumption. If the request fails before the SDK yields a stream object or before any events are consumed, `anthropic_classifier` and `anthropic_aware_backoff(...)` still apply normally.
+- Do not assume redress can resume a message stream after tokens, deltas, or tool events have already been delivered. Automatic replay can duplicate output or side effects.
+- Keep the retried unit idempotent. Common pattern: retry the request setup, then consume the stream once outside the retry boundary.
+- If you need recovery after a mid-stream disconnect, build explicit application-level restart or resume logic rather than relying on transparent retry.

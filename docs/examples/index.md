@@ -53,6 +53,20 @@ unless noted otherwise.
 - Uses `redress.contrib.sentry.sentry_hooks` to record breadcrumbs and terminal failure messages.
 - Run: `uv pip install "redress[sentry]"` then `uv run python docs/snippets/sentry_contrib.py`.
 
+## OpenAI SDK integration
+
+- Guide: `docs/contrib/openai.md`
+- Uses `redress.contrib.openai.openai_classifier` with `openai_aware_backoff(...)`.
+- Important: initialize the SDK with `OpenAI(max_retries=0)` so redress owns retries and deadlines.
+- Run: `uv pip install "redress[openai]"`.
+
+## Anthropic SDK integration
+
+- Guide: `docs/contrib/anthropic.md`
+- Uses `redress.contrib.anthropic.anthropic_classifier` with `anthropic_aware_backoff(...)`.
+- Important: initialize the SDK with `Anthropic(max_retries=0)` so redress owns retries and deadlines.
+- Run: `uv pip install "redress[anthropic]"`.
+
 ## HTTPX (async)
 
 - Snippet: `docs/snippets/httpx_async_retry.py`

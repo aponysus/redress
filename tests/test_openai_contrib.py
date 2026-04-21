@@ -294,3 +294,46 @@ def test_openai_aware_backoff_still_respects_remaining_deadline(
         assert strat(ctx) == 10.0
     finally:
         monkeypatch.setattr(strategies.random, "uniform", original_uniform)
+
+
+def test_openai_conformance_known_exception_hierarchy() -> None:
+    openai = pytest.importorskip("openai")
+
+    def walk(root: type[BaseException]) -> set[str]:
+        names: set[str] = set()
+        stack = [root]
+        seen: set[type[BaseException]] = set()
+        while stack:
+            current = stack.pop()
+            for child in current.__subclasses__():
+                if child in seen:
+                    continue
+                seen.add(child)
+                names.add(child.__name__)
+                stack.append(child)
+        return names
+
+    expected = {
+        "APIResponseValidationError",
+        "APIStatusError",
+        "APIConnectionError",
+        "APITimeoutError",
+        "BadRequestError",
+        "AuthenticationError",
+        "PermissionDeniedError",
+        "NotFoundError",
+        "ConflictError",
+        "UnprocessableEntityError",
+        "RateLimitError",
+        "InternalServerError",
+        "APIRemovedInV1",
+        "LengthFinishReasonError",
+        "ContentFilterFinishReasonError",
+        "MutuallyExclusiveAuthError",
+        "StreamAlreadyConsumed",
+        "_AmbiguousModuleClientUsageError",
+        "APIError",
+    }
+
+    discovered = walk(openai.OpenAIError)
+    assert discovered <= expected, f"Unhandled OpenAI exception subclasses: {sorted(discovered - expected)}"

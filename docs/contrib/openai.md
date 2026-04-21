@@ -2,7 +2,7 @@
 
 `redress.contrib.openai` provides OpenAI-specific retry helpers for the Python SDK.
 
-Phase 1 scope:
+This module currently exposes:
 
 - `openai_classifier`
 - `openai_aware_backoff(...)`
@@ -55,4 +55,29 @@ response = policy.call(
 - `409` maps to `CONCURRENCY`, not a provider-local fatal bucket.
 - `429` responses with `Retry-After` or `x-ratelimit-reset-*` hints populate `Classification.retry_after_s`.
 
-Streaming guidance, full mapping tables, and broader docs integration can expand in later phases.
+## Mapping summary
+
+| OpenAI SDK error or status | redress class | Notes |
+| --- | --- | --- |
+| `AuthenticationError` | `AUTH` | Credentials or auth configuration failed. |
+| `PermissionDeniedError` | `PERMISSION` | Caller is authenticated but not allowed. |
+| `NotFoundError` | `PERMANENT` | Resource or endpoint does not exist for the request. |
+| `BadRequestError` | `PERMANENT` | Invalid request payload. |
+| `UnprocessableEntityError` | `PERMANENT` | Request was syntactically valid but rejected as unprocessable. |
+| `ConflictError` | `CONCURRENCY` | Current implementation maps `409` to redress concurrency semantics. |
+| `RateLimitError` | `RATE_LIMIT` | If `body.code == "insufficient_quota"`, this maps to `PERMANENT` instead. |
+| `InternalServerError` | `SERVER_ERROR` | `Retry-After` hints are preserved when present. |
+| `APITimeoutError` | `TRANSIENT` | Transport timeout. |
+| `APIConnectionError` | `TRANSIENT` | Connection setup or network failure. |
+| `APIResponseValidationError` | `PERMANENT` | SDK could not validate the response shape. |
+| `APIStatusError` with `408` or `425` | `TRANSIENT` | Retry hint headers are propagated into `Classification.retry_after_s`. |
+| `APIStatusError` with `500`, `502`, `503`, or `504` | `SERVER_ERROR` | Retry hint headers are propagated into `Classification.retry_after_s`. |
+| Other `OpenAIError` subclasses | `UNKNOWN` | Fallback bucket until the SDK or classifier is updated. |
+| Non-OpenAI exceptions | `default_classifier(...)` | Lets redress handle generic Python and transport errors normally. |
+
+## Streaming
+
+- Retry stream creation, not partial stream consumption. If the call fails before the SDK yields a stream object or before any events are consumed, `openai_classifier` and `openai_aware_backoff(...)` still work normally.
+- Do not assume redress can transparently resume a stream after tokens or tool events have already been emitted. Once output has been observed, replay can duplicate content or side effects.
+- If you need retry around a streaming workflow, keep the retried unit idempotent. Typical pattern: retry the request setup, then consume the returned stream exactly once outside the retry boundary.
+- If your application must recover from mid-stream interruption, handle that at the application layer with explicit resume or restart semantics rather than automatic exception replay.

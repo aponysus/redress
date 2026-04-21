@@ -51,6 +51,9 @@ nav:
       - Databases: recipes/db.md
       - Observability: recipes/observability.md
       - Worker/Queue: recipes/workers.md
+  - Contrib:
+      - OpenAI: contrib/openai.md
+      - Anthropic: contrib/anthropic.md
   - Starter kits:
       - HTTP client with sane defaults: starters/http-client.md
       - Background worker with bounded retries: starters/worker.md

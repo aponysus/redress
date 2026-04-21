@@ -38,7 +38,7 @@ policy = Policy(
 
 **Sync/async symmetry.** `Policy` and `AsyncPolicy` share the same API and configuration; `RetryPolicy` / `AsyncRetryPolicy` remain convenient shortcuts.
 
-**Optional classifiers.** Extras for common libraries (aiohttp, grpc, boto3, redis, urllib3, pyodbc).
+**Optional integrations.** Extras for common libraries (aiohttp, grpc, boto3, redis, urllib3, pyodbc) plus provider-specific contrib modules for OpenAI and Anthropic.
 
 **Retry budgets.** Shared rolling-window limits to prevent retry storms across operations.
 
@@ -50,6 +50,8 @@ policy = Policy(
 - Why Redress: https://aponysus.github.io/redress/blog/why-redress/
 - Comparison: https://aponysus.github.io/redress/comparison/
 - API reference: https://aponysus.github.io/redress/api/
+- OpenAI contrib: https://aponysus.github.io/redress/contrib/openai/
+- Anthropic contrib: https://aponysus.github.io/redress/contrib/anthropic/
 
 ## Installation
 
@@ -59,6 +61,13 @@ From PyPI:
 uv pip install redress
 # or
 pip install redress
+```
+
+Optional provider integrations:
+
+```bash
+uv pip install "redress[openai]"
+uv pip install "redress[anthropic]"
 ```
 
 ## Quick Start
@@ -182,6 +191,34 @@ async def flaky_async():
 
 asyncio.run(async_policy.call(flaky_async))
 ```
+
+### OpenAI / Anthropic SDKs
+
+Use the provider contrib modules when you want redress to classify SDK-native
+exceptions and honor rate-limit headers without inventing a new error model.
+Disable SDK-native retries so redress owns attempt counting, deadlines, and
+metrics.
+
+```python
+from openai import OpenAI
+from redress import Policy, Retry
+from redress.contrib.openai import openai_aware_backoff, openai_classifier
+
+client = OpenAI(api_key="test", max_retries=0)
+
+policy = Policy(
+    retry=Retry(
+        classifier=openai_classifier,
+        strategy=openai_aware_backoff(max_s=30.0),
+        max_attempts=6,
+        deadline_s=120.0,
+    ),
+)
+```
+
+`redress.contrib.anthropic` follows the same shape with
+`Anthropic(max_retries=0)`, `anthropic_classifier`, and
+`anthropic_aware_backoff(...)`.
 
 ## Choosing the API surface
 
