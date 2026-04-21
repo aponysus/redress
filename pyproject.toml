@@ -82,6 +82,12 @@ datadog = [
 sentry = [
     "sentry-sdk>=2.0.0",
 ]
+openai = [
+    "openai>=1.40,<2",
+]
+anthropic = [
+    "anthropic>=0.40,<1",
+]
 
 [project.scripts]
 redress = "redress.cli:main"
