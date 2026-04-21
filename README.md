@@ -38,7 +38,7 @@ policy = Policy(
 
 **Sync/async symmetry.** `Policy` and `AsyncPolicy` share the same API and configuration; `RetryPolicy` / `AsyncRetryPolicy` remain convenient shortcuts.
 
-**Optional integrations.** Extras for common libraries (aiohttp, grpc, boto3, redis, urllib3, pyodbc) plus provider-specific contrib modules for OpenAI and Anthropic.
+**SDK and framework integrations.** First-class contrib modules for OpenAI and Anthropic, plus HTTP/framework integrations and thin extras for boto3, grpc, redis, urllib3, aiohttp, and pyodbc.
 
 **Retry budgets.** Shared rolling-window limits to prevent retry storms across operations.
 
@@ -52,6 +52,7 @@ policy = Policy(
 - API reference: https://aponysus.github.io/redress/api/
 - OpenAI contrib: https://aponysus.github.io/redress/contrib/openai/
 - Anthropic contrib: https://aponysus.github.io/redress/contrib/anthropic/
+- Examples & integrations: https://aponysus.github.io/redress/examples/
 
 ## Installation
 
@@ -63,12 +64,16 @@ uv pip install redress
 pip install redress
 ```
 
-Optional provider integrations:
+Common optional installs:
 
 ```bash
 uv pip install "redress[openai]"
 uv pip install "redress[anthropic]"
 ```
+
+Thin classifier extras for older stacks remain available separately, including
+`redress[aiohttp]`, `redress[grpc]`, `redress[boto3]`, `redress[redis]`, and
+`redress[urllib3]`.
 
 ## Quick Start
 

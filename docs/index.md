@@ -9,7 +9,7 @@ It treats retries, circuit breakers, and stop conditions as coordinated response
 ## Why redress?
 
 - **Per-class backoff:** Tune retries by coarse error class (429 vs. 5xx vs. deadlocks).
-- **Pluggable classifiers:** Built-ins for HTTP status + SQLSTATE, plus optional extras for aiohttp/grpc/boto3/redis/urllib3.
+- **Provider-aware integrations:** First-class contrib modules for OpenAI and Anthropic, plus HTTP/framework integrations and optional thin extras for older stacks.
 - **Sync/async symmetry:** Same semantics for threads and asyncio, plus a zero-arg `@retry` decorator.
 - **Deterministic envelopes:** Deadlines, max attempts, and caps for unknown errors.
 - **Best-effort observability:** Metric/log hooks that never break workloads.
@@ -54,13 +54,15 @@ result = policy.call(lambda: do_work(), operation="sync_task")
 
 ## What’s inside
 
-- **API highlights:** `Policy` / `Retry`, `CircuitBreaker`, `RetryPolicy` / `AsyncRetryPolicy`, `@retry`, classifiers (`default`, `http_classifier`, `sqlstate_classifier`, `aiohttp_classifier`, `grpc_classifier`, `boto3_classifier`, `redis_classifier`, `urllib3_classifier`, `pyodbc_classifier`), strategies (`decorrelated_jitter`, `equal_jitter`, `token_backoff`), hooks (`on_metric`, `on_log`), context manager reuse.
-- **Use cases:** HTTP 429/5xx, DB deadlocks/SQLSTATE 40001, queue/worker retries, third-party API calls, async services.
+- **API highlights:** `Policy` / `Retry`, `CircuitBreaker`, `RetryPolicy` / `AsyncRetryPolicy`, `@retry`, provider contribs for OpenAI and Anthropic, HTTP/framework contribs, classifiers (`default`, `http_classifier`, `sqlstate_classifier`, plus optional extras), strategies (`decorrelated_jitter`, `equal_jitter`, `token_backoff`), hooks (`on_metric`, `on_log`), context manager reuse.
+- **Use cases:** OpenAI and Anthropic API calls, HTTP 429/5xx, DB deadlocks/SQLSTATE 40001, queue/worker retries, async services.
 - **Production pointers:** Set `deadline_s` and `max_attempts`, cap `max_unknown_attempts`, keep tags low-cardinality (`class`, `operation`, `err`), attach metrics/log hooks.
 
 ## Where to go next
 
 - [Getting started](getting-started.md) – install and first examples.
+- [OpenAI contrib](contrib/openai.md) – OpenAI SDK exception mapping and backoff.
+- [Anthropic contrib](contrib/anthropic.md) – Anthropic SDK exception mapping and backoff.
 - [Concepts](concepts/error-classes.md) – error classes, strategies, policies, decorators.
 - [Observability](observability.md) – metrics/log hooks and patterns.
 - [Safety and resilience](safety-resilience.md): hook isolation, jitter guidance, production checklist.
