@@ -43,7 +43,9 @@ class _APIResponseValidationError(_APIError):
 
 
 class _APIStatusError(_APIError):
-    def __init__(self, status_code: int, *, headers: object | None = None, body: object | None = None) -> None:
+    def __init__(
+        self, status_code: int, *, headers: object | None = None, body: object | None = None
+    ) -> None:
         response = _Response(status_code, headers)
         super().__init__("status error", response.request, body=body)
         self.response = response
@@ -161,7 +163,9 @@ def test_anthropic_classifier_mappings(monkeypatch: pytest.MonkeyPatch) -> None:
     _install_fake_anthropic(monkeypatch)
 
     assert anthropic_extra.anthropic_classifier(_AuthenticationError(401)) is ErrorClass.AUTH
-    assert anthropic_extra.anthropic_classifier(_PermissionDeniedError(403)) is ErrorClass.PERMISSION
+    assert (
+        anthropic_extra.anthropic_classifier(_PermissionDeniedError(403)) is ErrorClass.PERMISSION
+    )
     assert anthropic_extra.anthropic_classifier(_NotFoundError(404)) is ErrorClass.PERMANENT
     assert anthropic_extra.anthropic_classifier(_BadRequestError(400)) is ErrorClass.PERMANENT
     assert anthropic_extra.anthropic_classifier(_RequestTooLargeError(413)) is ErrorClass.PERMANENT
@@ -171,9 +175,9 @@ def test_anthropic_classifier_mappings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert anthropic_extra.anthropic_classifier(_ConflictError(409)) is ErrorClass.CONCURRENCY
     assert anthropic_extra.anthropic_classifier(_APITimeoutError()) is ErrorClass.TRANSIENT
     assert anthropic_extra.anthropic_classifier(_APIConnectionError()) is ErrorClass.TRANSIENT
-    assert anthropic_extra.anthropic_classifier(_APIResponseValidationError(_Response(500), {})) is (
-        ErrorClass.PERMANENT
-    )
+    assert anthropic_extra.anthropic_classifier(
+        _APIResponseValidationError(_Response(500), {})
+    ) is (ErrorClass.PERMANENT)
     assert anthropic_extra.anthropic_classifier(_AnthropicError("misc")) is ErrorClass.UNKNOWN
 
 
@@ -393,6 +397,6 @@ def test_anthropic_conformance_known_exception_hierarchy() -> None:
     }
 
     discovered = walk(anthropic.AnthropicError)
-    assert discovered <= expected, (
-        f"Unhandled Anthropic exception subclasses: {sorted(discovered - expected)}"
-    )
+    assert (
+        discovered <= expected
+    ), f"Unhandled Anthropic exception subclasses: {sorted(discovered - expected)}"

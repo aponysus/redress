@@ -125,9 +125,9 @@ def test_openai_classifier_mappings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert openai_extra.openai_classifier(_AuthenticationError(401)) is ErrorClass.AUTH
     assert openai_extra.openai_classifier(_PermissionDeniedError(403)) is ErrorClass.PERMISSION
     assert openai_extra.openai_classifier(_NotFoundError(404)) is ErrorClass.PERMANENT
-    assert openai_extra.openai_classifier(_BadRequestError(400, code="context_length_exceeded")) is (
-        ErrorClass.PERMANENT
-    )
+    assert openai_extra.openai_classifier(
+        _BadRequestError(400, code="context_length_exceeded")
+    ) is (ErrorClass.PERMANENT)
     assert openai_extra.openai_classifier(_UnprocessableEntityError(422)) is ErrorClass.PERMANENT
     assert openai_extra.openai_classifier(_ConflictError(409)) is ErrorClass.CONCURRENCY
     assert openai_extra.openai_classifier(_APITimeoutError("timeout")) is ErrorClass.TRANSIENT
@@ -336,4 +336,6 @@ def test_openai_conformance_known_exception_hierarchy() -> None:
     }
 
     discovered = walk(openai.OpenAIError)
-    assert discovered <= expected, f"Unhandled OpenAI exception subclasses: {sorted(discovered - expected)}"
+    assert (
+        discovered <= expected
+    ), f"Unhandled OpenAI exception subclasses: {sorted(discovered - expected)}"

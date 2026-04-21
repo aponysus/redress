@@ -141,8 +141,10 @@ def _retry_after_from_exc(exc: BaseException) -> tuple[float | None, str | None]
 
 def _is_provider_error(exc: BaseException, provider: object, name: str) -> bool:
     error_type = getattr(provider, name, None)
-    return isinstance(error_type, type) and issubclass(error_type, BaseException) and isinstance(
-        exc, error_type
+    return (
+        isinstance(error_type, type)
+        and issubclass(error_type, BaseException)
+        and isinstance(exc, error_type)
     )
 
 
