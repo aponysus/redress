@@ -41,7 +41,7 @@ policy = Policy(
 
 response = policy.call(
     lambda: client.responses.create(
-        model="gpt-5.2",
+        model="gpt-5.4",
         input="hi",
     ),
     operation="openai.responses.create",

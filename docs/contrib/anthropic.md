@@ -41,7 +41,7 @@ policy = Policy(
 
 response = policy.call(
     lambda: client.messages.create(
-        model="claude-sonnet-4-6",
+        model="claude-opus-4-7",
         max_tokens=256,
         messages=[{"role": "user", "content": "hi"}],
     ),
