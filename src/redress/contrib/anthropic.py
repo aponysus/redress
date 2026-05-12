@@ -223,6 +223,25 @@ def anthropic_classifier(exc: BaseException) -> ErrorClass | Classification:
         return ErrorClass.TRANSIENT
     if _is_provider_error(exc, anthropic, "APIResponseValidationError"):
         return ErrorClass.PERMANENT
+    if _is_provider_error(exc, anthropic, "APIWebhookValidationError"):
+        return ErrorClass.PERMANENT
+    if _is_provider_error(exc, anthropic, "WorkloadIdentityError"):
+        status = _status_code(exc)
+        if status == 401:
+            return ErrorClass.AUTH
+        if status == 403:
+            return ErrorClass.PERMISSION
+        if status in {400, 404, 413, 422}:
+            return ErrorClass.PERMANENT
+        if status == 409:
+            return ErrorClass.CONCURRENCY
+        if status in {408, 425}:
+            return ErrorClass.TRANSIENT
+        if status == 429:
+            return ErrorClass.RATE_LIMIT
+        if status is not None and 500 <= status < 600:
+            return ErrorClass.SERVER_ERROR
+        return ErrorClass.UNKNOWN
     if _is_provider_error(exc, anthropic, "APIStatusError"):
         status = _status_code(exc)
         if status == 413:

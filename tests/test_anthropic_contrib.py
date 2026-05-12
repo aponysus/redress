@@ -42,6 +42,11 @@ class _APIResponseValidationError(_APIError):
         self.status_code = response.status_code
 
 
+class _APIWebhookValidationError(_APIError):
+    def __init__(self) -> None:
+        super().__init__("invalid webhook", _Request(), body=None)
+
+
 class _APIStatusError(_APIError):
     def __init__(
         self, status_code: int, *, headers: object | None = None, body: object | None = None
@@ -117,10 +122,17 @@ class _APITimeoutError(_APIConnectionError):
     pass
 
 
+class _WorkloadIdentityError(_AnthropicError):
+    def __init__(self, status_code: int | None = None) -> None:
+        super().__init__("workload identity error")
+        self.status_code = status_code
+
+
 class _AnthropicModule:
     AnthropicError = _AnthropicError
     APIError = _APIError
     APIResponseValidationError = _APIResponseValidationError
+    APIWebhookValidationError = _APIWebhookValidationError
     APIStatusError = _APIStatusError
     BadRequestError = _BadRequestError
     AuthenticationError = _AuthenticationError
@@ -136,6 +148,7 @@ class _AnthropicModule:
     InternalServerError = _InternalServerError
     APIConnectionError = _APIConnectionError
     APITimeoutError = _APITimeoutError
+    WorkloadIdentityError = _WorkloadIdentityError
 
 
 def _install_fake_anthropic(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,6 +191,9 @@ def test_anthropic_classifier_mappings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert anthropic_extra.anthropic_classifier(
         _APIResponseValidationError(_Response(500), {})
     ) is (ErrorClass.PERMANENT)
+    assert anthropic_extra.anthropic_classifier(_APIWebhookValidationError()) is (
+        ErrorClass.PERMANENT
+    )
     assert anthropic_extra.anthropic_classifier(_AnthropicError("misc")) is ErrorClass.UNKNOWN
 
 
@@ -248,6 +264,39 @@ def test_anthropic_classifier_overloaded_and_status_error_mappings(
     assert anthropic_extra.anthropic_classifier(_APIStatusError(413)) is ErrorClass.PERMANENT
     assert anthropic_extra.anthropic_classifier(_APIStatusError(425)) is ErrorClass.TRANSIENT
     assert anthropic_extra.anthropic_classifier(_APIStatusError(418)) is ErrorClass.UNKNOWN
+
+
+def test_anthropic_classifier_workload_identity_error_mappings(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_anthropic(monkeypatch)
+
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(401)) is ErrorClass.AUTH
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(403)) is (
+        ErrorClass.PERMISSION
+    )
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(400)) is (
+        ErrorClass.PERMANENT
+    )
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(413)) is (
+        ErrorClass.PERMANENT
+    )
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(409)) is (
+        ErrorClass.CONCURRENCY
+    )
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(408)) is (
+        ErrorClass.TRANSIENT
+    )
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(425)) is (
+        ErrorClass.TRANSIENT
+    )
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(429)) is (
+        ErrorClass.RATE_LIMIT
+    )
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError(503)) is (
+        ErrorClass.SERVER_ERROR
+    )
+    assert anthropic_extra.anthropic_classifier(_WorkloadIdentityError()) is ErrorClass.UNKNOWN
 
 
 def test_anthropic_classifier_handles_malformed_body_and_headers(
@@ -376,6 +425,7 @@ def test_anthropic_conformance_known_exception_hierarchy() -> None:
         "APIResponseValidationError",
         "APIStatusError",
         "APITimeoutError",
+        "APIWebhookValidationError",
         "AuthenticationError",
         "BadRequestError",
         "ConflictError",
@@ -391,6 +441,7 @@ def test_anthropic_conformance_known_exception_hierarchy() -> None:
         "ServiceUnavailableError",
         "StreamAlreadyConsumed",
         "UnprocessableEntityError",
+        "WorkloadIdentityError",
     }
 
     discovered = walk(anthropic.AnthropicError)
