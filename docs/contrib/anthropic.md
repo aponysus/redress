@@ -75,6 +75,7 @@ response = policy.call(
 | `InternalServerError` | `SERVER_ERROR` | Retry hint headers are preserved when present. |
 | `APITimeoutError` | `TRANSIENT` | Transport timeout. |
 | `APIConnectionError` | `TRANSIENT` | Connection setup or network failure. |
+| `RetryableError` | `TRANSIENT` | SDK/middleware opt-in retry signal. |
 | `APIResponseValidationError` | `PERMANENT` | SDK could not validate the response shape. |
 | `APIWebhookValidationError` | `PERMANENT` | SDK could not validate an incoming webhook payload or signature. |
 | `WorkloadIdentityError` | status-based | Token exchange failures use their `status_code` when available: `401` -> `AUTH`, `403` -> `PERMISSION`, `400`/`404`/`413`/`422` -> `PERMANENT`, `408`/`425` -> `TRANSIENT`, `409` -> `CONCURRENCY`, `429` -> `RATE_LIMIT`, and `5xx` -> `SERVER_ERROR`. |

@@ -221,6 +221,8 @@ def anthropic_classifier(exc: BaseException) -> ErrorClass | Classification:
         return ErrorClass.TRANSIENT
     if _is_provider_error(exc, anthropic, "APIConnectionError"):
         return ErrorClass.TRANSIENT
+    if _is_provider_error(exc, anthropic, "RetryableError"):
+        return ErrorClass.TRANSIENT
     if _is_provider_error(exc, anthropic, "APIResponseValidationError"):
         return ErrorClass.PERMANENT
     if _is_provider_error(exc, anthropic, "APIWebhookValidationError"):

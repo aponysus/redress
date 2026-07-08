@@ -122,6 +122,10 @@ class _APITimeoutError(_APIConnectionError):
     pass
 
 
+class _RetryableError(_AnthropicError):
+    pass
+
+
 class _WorkloadIdentityError(_AnthropicError):
     def __init__(self, status_code: int | None = None) -> None:
         super().__init__("workload identity error")
@@ -148,6 +152,7 @@ class _AnthropicModule:
     InternalServerError = _InternalServerError
     APIConnectionError = _APIConnectionError
     APITimeoutError = _APITimeoutError
+    RetryableError = _RetryableError
     WorkloadIdentityError = _WorkloadIdentityError
 
 
@@ -188,6 +193,7 @@ def test_anthropic_classifier_mappings(monkeypatch: pytest.MonkeyPatch) -> None:
     assert anthropic_extra.anthropic_classifier(_ConflictError(409)) is ErrorClass.CONCURRENCY
     assert anthropic_extra.anthropic_classifier(_APITimeoutError()) is ErrorClass.TRANSIENT
     assert anthropic_extra.anthropic_classifier(_APIConnectionError()) is ErrorClass.TRANSIENT
+    assert anthropic_extra.anthropic_classifier(_RetryableError()) is ErrorClass.TRANSIENT
     assert anthropic_extra.anthropic_classifier(
         _APIResponseValidationError(_Response(500), {})
     ) is (ErrorClass.PERMANENT)
@@ -437,6 +443,7 @@ def test_anthropic_conformance_known_exception_hierarchy() -> None:
         "OverloadedError",
         "PermissionDeniedError",
         "RateLimitError",
+        "RetryableError",
         "RequestTooLargeError",
         "ServiceUnavailableError",
         "StreamAlreadyConsumed",
