@@ -2,9 +2,17 @@
 
 Release notes are maintained here.
 
-## [Unreleased]
+## [1.4.1] - 2026-09-24
+
 ### Fixed
-- Sync and async retries now stop at the final allowed failed attempt before computing backoff, consuming a retry budget token, emitting a retry event, or invoking sleep hooks/handlers. Global attempt exhaustion can no longer become budget exhaustion or a deferred retry at that point.
+- Sync and async retries now stop at the final allowed failed attempt without computing backoff, consuming a retry budget token, emitting a `retry` event, or invoking sleep hooks and handlers. This applies to both exception-based and result-based failures through `call()` and `execute()`.
+- Global attempt exhaustion now reports `MAX_ATTEMPTS_GLOBAL` instead of being replaced by budget exhaustion or a sleep handler's defer/abort decision. Existing classification and deadline stop conditions retain precedence.
+
+### Docs
+- Added dedicated migration guides for Tenacity and Backoff, plus performance tuning and troubleshooting guides, linked from the docs index and navigation.
+- Clarified attempt limits, timeout behavior, retry budgets, and terminal outcomes, with executable examples checked against the current APIs.
+
+Retry telemetry may contain fewer `retry` events after this fix: the final failed attempt emits exhaustion without an extra retry event. No public API changes are required to upgrade.
 
 ## [1.4.0] - 2026-04-21
 ### Added
