@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import runpy
 from pathlib import Path
 
+import pytest
+
+from redress import ErrorClass, Policy, Retry, StopReason
 from redress.policy import retry_helpers
+from redress.testing import instant_retries
 
 
 def _snippet_path(name: str) -> Path:
@@ -61,3 +66,58 @@ def test_decorator_retry_snippet_smoke(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
     assert "Sync: sync-ok" in output
     assert "Async: async-ok" in output
+
+
+def _guide_examples(name: str) -> list[str]:
+    path = Path(__file__).resolve().parents[1] / "docs" / name
+    return [
+        code
+        for code in re.findall(r"```python\n(.*?)```", path.read_text(), re.DOTALL)
+        if "from redress import" in code
+    ]
+
+
+@pytest.mark.parametrize(
+    "guide",
+    [
+        "migrating-from-tenacity.md",
+        "migrating-from-backoff.md",
+        "performance-tuning.md",
+        "troubleshooting.md",
+    ],
+)
+def test_evergreen_guide_examples(guide, monkeypatch) -> None:
+    monkeypatch.setattr(retry_helpers.time, "sleep", _no_sleep)
+    examples = _guide_examples(guide)
+    assert examples, f"No executable Redress examples in {guide}"
+    for code in examples:
+        exec(compile(code, guide, "exec"), {})
+
+
+@pytest.mark.parametrize("guide", ["migrating-from-tenacity.md", "migrating-from-backoff.md"])
+def test_migration_classifier_preserves_exception_selection(guide) -> None:
+    namespace = {}
+    exec(compile(_guide_examples(guide)[0], guide, "exec"), namespace)
+    classifier = namespace["classify_timeout"]
+    policy = Policy(
+        retry=Retry(
+            classifier=classifier,
+            strategy=instant_retries,
+            max_attempts=5,
+        )
+    )
+
+    def timeout():
+        raise TimeoutError("unavailable")
+
+    outcome = policy.execute(timeout)
+    assert outcome.attempts == 5
+    assert outcome.last_class is ErrorClass.TRANSIENT
+    assert outcome.stop_reason is StopReason.MAX_ATTEMPTS_GLOBAL
+
+    def excluded_exception():
+        raise ValueError("invalid input")
+
+    outcome = policy.execute(excluded_exception)
+    assert outcome.attempts == 1
+    assert outcome.stop_reason is StopReason.NON_RETRYABLE_CLASS

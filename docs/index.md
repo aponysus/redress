@@ -72,4 +72,8 @@ result = policy.call(lambda: do_work(), operation="sync_task")
 - [Reference flows](reference-flows.md) - end-to-end service patterns.
 - [Examples & Integrations](examples/index.md) – runnable snippets for HTTP, DB, workers, FastAPI, benchmarks.
 - [Comparison](comparison.md) – Redress vs. alternatives.
+- [Migrating from Tenacity](migrating-from-tenacity.md) – preserve exception selection, limits, and terminal behavior.
+- [Migrating from Backoff](migrating-from-backoff.md) – translate decorators, predicates, and give-up rules.
+- [Performance tuning](performance-tuning.md) – measure overhead and tune latency and retry load.
+- [Troubleshooting](troubleshooting.md) – diagnose outcomes, stop reasons, timeouts, and hooks.
 - [API reference](api.md) – entry points at a glance.

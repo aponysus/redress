@@ -4,6 +4,8 @@ Use this page when you want the blunt version: the common failure-handling
 footguns, the defaults that matter most, and the situations where redress
 should be used more carefully.
 
+For symptom-based diagnosis and stop reasons, see [Troubleshooting](troubleshooting.md).
+
 ## Start with these defaults
 
 - Prefer `Policy(retry=Retry(...))` as the default API.

@@ -395,10 +395,14 @@ Non-blocking "step" execution for systems that schedule retries in a DB/queue ra
 - [ ] Production checklist (expanded)
 
 ### Ongoing Documentation
-- [ ] Migration guide: "Migrating from tenacity"
-- [ ] Migration guide: "Migrating from backoff"
-- [ ] Performance tuning guide
-- [ ] Troubleshooting guide
+
+The guides below are implemented in the docs source. Publication follows the
+normal documentation deployment when these changes reach `main`.
+
+- [x] [Migrating from Tenacity](migrating-from-tenacity.md)
+- [x] [Migrating from Backoff](migrating-from-backoff.md)
+- [x] [Performance tuning guide](performance-tuning.md)
+- [x] [Troubleshooting guide](troubleshooting.md)
 
 ---
 
