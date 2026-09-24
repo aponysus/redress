@@ -336,6 +336,18 @@ policy.call(
 
 ## Attempt lifecycle hooks
 
+`on_attempt_start(ctx)` and `on_attempt_end(ctx)` are synchronous, best-effort
+observers, including when used with async policies. Exceptions derived from
+`Exception` are ignored: a hook failure does not retry a successful operation,
+replace an operation exception, consume retry budget, or change breaker outcomes.
+This applies to `call()` and `execute()`, with or without a retry component.
+Handle and report errors inside the hook if you need to detect observer failures.
+
+Cancellation (`asyncio.CancelledError`), `KeyboardInterrupt`, and `SystemExit`
+still propagate. For cooperative control flow, use `abort_if` or raise
+`AbortRetry` from the operation; raising `AbortRetry` inside an observer is
+treated as an observer error and ignored.
+
 ```python
 from redress import AttemptDecision
 

@@ -16,6 +16,7 @@ from ..sleep import (
     SleepFn,
 )
 from ..strategies import BackoffContext
+from .hooks import _call_attempt_hook
 from .state import _RetryDecision, _RetryState
 from .types import (
     AttemptContext,
@@ -136,7 +137,7 @@ def _call_attempt_start(
         cause=None,
         sleep_s=None,
     )
-    hook(ctx)
+    _call_attempt_hook(hook, ctx)
 
 
 def _call_attempt_end(
@@ -166,7 +167,7 @@ def _call_attempt_end(
         cause=cause,
         sleep_s=sleep_s,
     )
-    hook(ctx)
+    _call_attempt_hook(hook, ctx)
 
 
 def _call_attempt_end_from_outcome(

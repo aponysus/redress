@@ -11,6 +11,7 @@ ClassifierFn = Callable[[BaseException], ErrorClass | Classification]
 MetricHook = Callable[[str, int, float, dict[str, Any]], None]
 LogHook = Callable[[str, dict[str, Any]], None]
 AbortPredicate = Callable[[], bool]
+# Synchronous observer; ordinary Exception failures are isolated from execution.
 AttemptHook = Callable[["AttemptContext"], None]
 P = ParamSpec("P")
 T = TypeVar("T")
