@@ -43,7 +43,7 @@ See [Retry strategies](concepts/strategies.md) for details on built-ins.
 ## Production checklist
 
 - Timeouts: set per-attempt timeouts shorter than `deadline_s` so there is room for retries.
-- Deadline: tune `deadline_s` to your upstream SLA; it bounds wall-clock retry time.
+- Deadline: tune `deadline_s` to your upstream SLA; it bounds retry decisions and sleeps but does not interrupt an in-flight operation. See [Performance tuning](performance-tuning.md) for timeout limitations.
 - Max attempts: set `max_attempts` and `max_unknown_attempts` to prevent runaway loops.
 - Per-class caps: use `per_class_max_attempts` for noisy classes like `RATE_LIMIT`/`SERVER_ERROR`.
 - Budgets: use `Budget(max_retries, window_s)` to cap aggregate retry volume (backpressure).
@@ -57,3 +57,6 @@ See [Retry strategies](concepts/strategies.md) for details on built-ins.
   `max_unknown_attempts_exceeded`, `permanent_fail`, and distributions of `sleep_s`.
 
 See [Observability](observability.md) for hook patterns and alerting ideas.
+
+Use [Performance tuning](performance-tuning.md) to measure latency and retry load,
+or [Troubleshooting](troubleshooting.md) to diagnose unexpected behavior.

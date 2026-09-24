@@ -34,6 +34,10 @@ nav:
       - Usage: usage.md
       - Pitfalls and defaults: pitfalls-and-defaults.md
       - Migration: migration.md
+      - Migrating from Tenacity: migrating-from-tenacity.md
+      - Migrating from Backoff: migrating-from-backoff.md
+      - Performance tuning: performance-tuning.md
+      - Troubleshooting: troubleshooting.md
       - API reference: api.md
   - Concepts:
       - Error classes & classifiers: concepts/error-classes.md

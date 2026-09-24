@@ -44,5 +44,10 @@ Focus: correctness, docs clarity, and keeping the existing API surface coherent.
 
 ## Ongoing Documentation
 
-- Migration guides (Tenacity, Backoff, retry-only wrappers to `Policy`)
-- Performance tuning and troubleshooting guides
+Maintain and extend the evergreen guides as APIs evolve:
+
+- [Migrating from Tenacity](migrating-from-tenacity.md)
+- [Migrating from Backoff](migrating-from-backoff.md)
+- [Retry-only wrappers to Policy](migration.md#retry-only-object-migration)
+- [Performance tuning](performance-tuning.md)
+- [Troubleshooting](troubleshooting.md)

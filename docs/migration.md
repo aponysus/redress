@@ -27,73 +27,15 @@ stronger model once the code stops being “just a decorator.”
 
 ## From Tenacity-style decorators
 
-Typical pattern:
-
-```python
-from tenacity import retry, stop_after_attempt, wait_exponential
-
-@retry(stop=stop_after_attempt(5), wait=wait_exponential())
-def fetch_user():
-    ...
-```
-
-Nearest redress equivalent:
-
-```python
-from redress import retry, default_classifier
-from redress.strategies import decorrelated_jitter
-
-@retry(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),
-    max_attempts=5,
-)
-def fetch_user():
-    ...
-```
-
-What becomes more explicit:
-
-- how failures are classified
-- what kinds of errors should be treated differently
-
-What you gain:
-
-- per-class behavior
-- stable stop reasons
-- a clean path to `Policy(...)`, budgets, and breakers
+Follow [Migrating from Tenacity](migrating-from-tenacity.md) for exception
+selection, wait schedules, result classifiers, async usage, and terminal behavior.
+It includes runnable Redress examples and a migration verification checklist.
 
 ## From Backoff-style decorators
 
-Typical pattern:
-
-```python
-import backoff
-
-@backoff.on_exception(backoff.expo, Exception, max_tries=5)
-def fetch_user():
-    ...
-```
-
-Nearest redress equivalent:
-
-```python
-from redress import retry, default_classifier
-from redress.strategies import decorrelated_jitter
-
-@retry(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=5.0),
-    max_attempts=5,
-)
-def fetch_user():
-    ...
-```
-
-What changes:
-
-- retryability is classification-driven instead of “retry this broad exception set”
-- you can move naturally toward explicit policy objects as behavior grows
+Follow [Migrating from Backoff](migrating-from-backoff.md) for exception filters,
+give-up rules, result predicates, hooks, async usage, and fallback behavior.
+The guide calls out intentional timing changes and differences in attempt limits.
 
 ## When to stop using decorator-only migration
 
@@ -101,7 +43,7 @@ Move from the decorator to `Policy` when you need:
 
 - circuit breakers
 - shared retry budgets
-- result-based retries
+- explicit outcome handling for result-based retries
 - `execute()` / `RetryOutcome`
 - multiple operations sharing one configuration
 
