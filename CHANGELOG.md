@@ -13,6 +13,7 @@ to PyPI. Its fixes and documentation are included in 1.4.2; the existing
 - Global attempt exhaustion now reports `MAX_ATTEMPTS_GLOBAL` instead of being replaced by budget exhaustion or a sleep handler's defer/abort decision. Existing classification and deadline stop conditions retain precedence.
 
 ### Changed
+- Updated the PyPI publisher to support core metadata 2.5 and added strict Twine metadata validation to CI and release checks.
 - Added release consistency gates for tags, package and lockfile versions, changelog entries, and built wheel/sdist metadata. Publishing now fails on existing artifacts and creates the GitHub release only after a successful PyPI upload.
 
 ### Docs

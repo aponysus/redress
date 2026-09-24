@@ -64,6 +64,13 @@ to the gate and release process.
 PR CI checks these source versions and builds and checks both distributions.
 Prepare the metadata and changelog together in the same change.
 
+The publisher uses `pypa/gh-action-pypi-publish@v1.14.2`, which includes Twine 7
+and supports core metadata 2.5. CI and the release workflow also run
+`twine==7.0.0 check --strict` before publishing. Keep these validators compatible
+when updating build or publishing tools; package-version consistency alone does
+not verify that the uploader understands the generated metadata format.
+See the [publisher release notes](https://github.com/pypa/gh-action-pypi-publish/releases/tag/v1.14.2).
+
 ### 2. Run quality and artifact checks
 
 From the project root (venv activated):
@@ -73,9 +80,10 @@ uv run ruff format --check src tests docs scripts
 uv run ruff check src tests docs scripts
 uv run mypy src
 uv run pytest
-python -m pip install build
+python -m pip install build "twine==7.0.0"
 python -m build
 python scripts/check_release.py --dist dist
+python -m twine check --strict dist/*
 ```
 
 Use a fresh distribution directory. The artifact gate requires exactly one

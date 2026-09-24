@@ -29,16 +29,19 @@ jobs:
       - name: Install build tooling
         run: |
           python -m pip install --upgrade pip
-          python -m pip install build
+          python -m pip install build "twine==7.0.0"
       - name: Build sdist/wheel
         run: python -m build
       - name: Verify built distribution versions
         run: python scripts/check_release.py --tag "$GITHUB_REF_NAME" --dist dist
+      - name: Check distribution metadata compatibility
+        run: python -m twine check --strict dist/*
       - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@v1.13.0
+        uses: pypa/gh-action-pypi-publish@v1.14.2
         with:
           password: ${{ secrets.PYPI_API_TOKEN }}
           skip-existing: false
+          attestations: false # API-token authentication; attestations require Trusted Publishing.
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
