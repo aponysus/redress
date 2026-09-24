@@ -62,10 +62,11 @@ entry, and embedded wheel/sdist metadata. Reject mismatches before upload.
 Fail on existing artifacts instead of silently skipping them. Publish to PyPI
 before creating the GitHub release. Add the source/artifact checks to PR CI.
 
-**Follow-up in this change:** package and lockfile metadata are aligned to
-1.4.1; gates and regression tests are added. Existing tags and remote releases
-are not modified. Publication and resolution of the old tag remain maintainer
-release steps; see [Contributing](https://github.com/aponysus/redress/blob/main/CONTRIBUTING.md#release-process).
+**Follow-up:** gates and regression tests are added. The selected recovery is
+1.4.2, with package and lockfile metadata aligned and the unpublished changes
+consolidated in its changelog entry. The existing `v1.4.1` tag remains unchanged.
+Tagging the corrected commit and publication remain maintainer release steps;
+see [Contributing](https://github.com/aponysus/redress/blob/main/CONTRIBUTING.md#release-process).
 
 ## R2 — Attempt-end hook failures can repeat successful work
 
@@ -281,7 +282,7 @@ Verify wrappers, `call()`/`execute()`, and sync/async behavior together.
 ## Recommended sequence and completion criteria
 
 1. **Release integrity:** source/tag/artifact checks in CI and publishing;
-   matching 1.4.1 metadata; resolve the existing tag deliberately; verify the
+   matching 1.4.2 metadata; retain the existing 1.4.1 tag unchanged; verify the
    package actually published before declaring the release complete.
 2. **Execution correctness:** resolve R2–R5 with regression tests covering
    duplicate side effects, cancellation, admission ownership, and upload replay.

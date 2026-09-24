@@ -2,7 +2,11 @@
 
 Release notes are maintained here.
 
-## [1.4.1] - 2026-09-24
+## [1.4.2] - 2026-09-24
+
+Version 1.4.1 was tagged with incorrect package metadata and was not published
+to PyPI. Its fixes and documentation are included in 1.4.2; the existing
+`v1.4.1` tag is retained unchanged.
 
 ### Fixed
 - Sync and async retries now stop at the final allowed failed attempt without computing backoff, consuming a retry budget token, emitting a `retry` event, or invoking sleep hooks and handlers. This applies to both exception-based and result-based failures through `call()` and `execute()`.

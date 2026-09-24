@@ -117,10 +117,12 @@ The review found that the existing `v1.4.1` tag describes 1.4.0 package metadata
 the maintainer confirmed PyPI still has 1.4.0. Correcting the working tree does
 not repair that existing tag, and rerunning its old workflow uses the old code.
 
-Before publishing, choose a deliberate recovery path: either correct the
-unpublished 1.4.1 tag/release through a coordinated maintainer action, or prepare
-a new unused version and tag. Do not silently move a tag that downstream users
-may already reference. The version-gate change does not alter tags or publish.
+The chosen recovery is to release 1.4.2 and leave `v1.4.1` unchanged. The
+1.4.2 changelog includes the unpublished fixes and documents the skipped PyPI
+version. Validate the corrected commit and its artifacts with
+`python scripts/check_release.py --tag v1.4.2 --dist dist` before tagging it.
+Do not move the existing tag: downstream users may already reference it.
+Preparing the version metadata does not itself tag or publish a release.
 
 If PyPI upload succeeds but GitHub release creation fails, repair the GitHub
 release separately after verifying the published artifacts. If only some
