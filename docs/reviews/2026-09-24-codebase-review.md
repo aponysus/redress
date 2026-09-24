@@ -70,7 +70,7 @@ see [Contributing](https://github.com/aponysus/redress/blob/main/CONTRIBUTING.md
 
 ## R2 — Attempt-end hook failures can repeat successful work
 
-**High. Reproduced. Open.**
+**High. Reproduced at the review baseline. Fixed in the current source.**
 
 In [sync_core.py](https://github.com/aponysus/redress/blob/46f047a/src/redress/policy/runner/sync_core.py), `execute()`
 invokes the successful attempt-end hook inside the exception boundary used to
@@ -87,6 +87,17 @@ This can duplicate side effects and violates execution-mode consistency.
 Specify which hooks are best-effort and which intentionally propagate.
 Never interpret an observation failure as a retryable operation failure.
 Test both modes, both runners, start/end hooks, and successful mutations.
+
+**Implemented:** one shared lifecycle-hook boundary now suppresses ordinary
+`Exception` failures for sync/async `call()` and `execute()`, including direct
+retry components, compatibility wrappers, and policies without retries.
+Cancellation, `KeyboardInterrupt`, and `SystemExit` continue to propagate.
+Observer failures cannot enter operation classification. Regression coverage
+compares hook-failing and hook-successful executions for success, recovery,
+terminal exception/result failure, and cooperative abort, checking operation
+counts, hook events, terminal outcomes, retry budget, and breaker state.
+See [Attempt lifecycle hooks](../usage.md#attempt-lifecycle-hooks) for the contract.
+Other findings, including R3 cancellation cleanup, remain open.
 
 ## R3 — Cancellation can strand a half-open circuit breaker
 

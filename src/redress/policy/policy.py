@@ -31,6 +31,7 @@ from .execution import (
     record_failure,
     record_success,
 )
+from .hooks import _call_attempt_hook
 from .retry import Retry
 from .types import (
     AbortPredicate,
@@ -121,19 +122,20 @@ class Policy:
     ) -> Any:
         """Execute func without retry wrapper."""
         if on_start is not None:
-            on_start(make_attempt_context(1, ctx.operation, ctx.elapsed()))
+            _call_attempt_hook(on_start, make_attempt_context(1, ctx.operation, ctx.elapsed()))
 
         result = func()
 
         if on_end is not None:
-            on_end(
+            _call_attempt_hook(
+                on_end,
                 make_attempt_context(
                     1,
                     ctx.operation,
                     ctx.elapsed(),
                     result=result,
                     decision=AttemptDecision.SUCCESS,
-                )
+                ),
             )
 
         return result
@@ -146,7 +148,8 @@ class Policy:
     ) -> None:
         """Handle AbortRetryError in call mode."""
         if self.retry is None and on_end is not None:
-            on_end(
+            _call_attempt_hook(
+                on_end,
                 make_attempt_context(
                     1,
                     ctx.operation,
@@ -154,7 +157,7 @@ class Policy:
                     exception=exc,
                     decision=AttemptDecision.ABORTED,
                     stop_reason=StopReason.ABORTED,
-                )
+                ),
             )
         record_cancel(ctx)
 
@@ -178,7 +181,8 @@ class Policy:
             return
 
         if self.retry is None and on_end is not None:
-            on_end(
+            _call_attempt_hook(
+                on_end,
                 make_attempt_context(
                     1,
                     ctx.operation,
@@ -186,7 +190,7 @@ class Policy:
                     exception=exc,
                     decision=AttemptDecision.RAISE,
                     cause="exception",
-                )
+                ),
             )
 
         klass = classify_for_breaker(exc, self.retry)
@@ -294,14 +298,15 @@ class Policy:
         """Execute single attempt without retry."""
         try:
             if on_start is not None:
-                on_start(make_attempt_context(1, ctx.operation, ctx.elapsed()))
+                _call_attempt_hook(on_start, make_attempt_context(1, ctx.operation, ctx.elapsed()))
 
             result = func()
 
         except AbortRetryError as exc:
             record_cancel(ctx)
             if on_end is not None:
-                on_end(
+                _call_attempt_hook(
+                    on_end,
                     make_attempt_context(
                         1,
                         ctx.operation,
@@ -309,7 +314,7 @@ class Policy:
                         exception=exc,
                         decision=AttemptDecision.ABORTED,
                         stop_reason=StopReason.ABORTED,
-                    )
+                    ),
                 )
             return build_aborted_outcome(ctx)
 
@@ -321,7 +326,8 @@ class Policy:
             klass = classify_for_breaker(exc, None)
             record_failure(ctx, klass)
             if on_end is not None:
-                on_end(
+                _call_attempt_hook(
+                    on_end,
                     make_attempt_context(
                         1,
                         ctx.operation,
@@ -329,21 +335,22 @@ class Policy:
                         exception=exc,
                         decision=AttemptDecision.RAISE,
                         cause="exception",
-                    )
+                    ),
                 )
             return build_exception_outcome_no_retry(ctx, exc, klass)
 
         # Success
         record_success(ctx)
         if on_end is not None:
-            on_end(
+            _call_attempt_hook(
+                on_end,
                 make_attempt_context(
                     1,
                     ctx.operation,
                     ctx.elapsed(),
                     result=result,
                     decision=AttemptDecision.SUCCESS,
-                )
+                ),
             )
         return build_success_outcome_no_retry(ctx, result)
 

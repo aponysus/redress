@@ -4,7 +4,16 @@ This page covers how redress behaves under failure and how to configure it for p
 
 ## Hook failure isolation
 
-`on_metric` and `on_log` are best-effort. Hook exceptions are swallowed inside the retry loop, so observability failures never change retry behavior. This keeps workloads safe, but it also means hook failures are silent unless you handle them.
+`on_metric`, `on_log`, `on_attempt_start`, and `on_attempt_end` are best-effort.
+Exceptions derived from `Exception` are swallowed at the hook boundary, so
+observer failures do not change operation results or retry decisions. This also
+means hook failures are silent unless you handle them. Cancellation,
+`KeyboardInterrupt`, and `SystemExit` still propagate.
+
+Attempt hook isolation applies to sync and async execution, `call()` and
+`execute()`, and policies without a retry component. A failing attempt-end hook
+cannot cause a successful operation to run again. See
+[Attempt lifecycle hooks](usage.md#attempt-lifecycle-hooks) for the full contract.
 
 Recommended handling:
 

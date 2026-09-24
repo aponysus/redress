@@ -141,8 +141,8 @@ recovery; do not re-enable blanket `skip-existing` to hide a mismatch.
 
 The [2026-09-24 codebase and documentation review](docs/reviews/2026-09-24-codebase-review.md)
 records confirmed defects, integration risks, evidence, and recommended work.
-Only its release-integrity finding is addressed by the accompanying gates;
-other findings remain open.
+Release-integrity gates (R1) and lifecycle-hook isolation (R2) are implemented.
+The review records the remaining open findings and validation limits.
 
 ## Good first contributions
 
