@@ -8,6 +8,9 @@ Release notes are maintained here.
 - Sync and async retries now stop at the final allowed failed attempt without computing backoff, consuming a retry budget token, emitting a `retry` event, or invoking sleep hooks and handlers. This applies to both exception-based and result-based failures through `call()` and `execute()`.
 - Global attempt exhaustion now reports `MAX_ATTEMPTS_GLOBAL` instead of being replaced by budget exhaustion or a sleep handler's defer/abort decision. Existing classification and deadline stop conditions retain precedence.
 
+### Changed
+- Added release consistency gates for tags, package and lockfile versions, changelog entries, and built wheel/sdist metadata. Publishing now fails on existing artifacts and creates the GitHub release only after a successful PyPI upload.
+
 ### Docs
 - Added dedicated migration guides for Tenacity and Backoff, plus performance tuning and troubleshooting guides, linked from the docs index and navigation.
 - Clarified attempt limits, timeout behavior, retry budgets, and terminal outcomes, with executable examples checked against the current APIs.
