@@ -300,6 +300,22 @@ class _RetryState:
             )
             return _RetryDecision("raise")
 
+        # Only schedule retry work when another operation attempt is available.
+        # Keep classification/deadline stop reasons and strategy failure tracking
+        # above this check, but do not compute a delay or consume retry budget.
+        if attempt >= self.policy.max_attempts:
+            self.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
+            self.emit(
+                EventName.MAX_ATTEMPTS_EXCEEDED.value,
+                attempt,
+                0.0,
+                klass,
+                exc,
+                stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
+                cause=cause,
+            )
+            return _RetryDecision("raise")
+
         ctx = _build_backoff_context(
             attempt=attempt,
             classification=classification,

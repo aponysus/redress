@@ -2,6 +2,10 @@
 
 Release notes are maintained here.
 
+## [Unreleased]
+### Fixed
+- Sync and async retries now stop at the final allowed failed attempt before computing backoff, consuming a retry budget token, emitting a retry event, or invoking sleep hooks/handlers. Global attempt exhaustion can no longer become budget exhaustion or a deferred retry at that point.
+
 ## [1.4.0] - 2026-04-21
 ### Added
 - New provider-specific contrib integrations for OpenAI and Anthropic via `redress.contrib.openai` and `redress.contrib.anthropic`.

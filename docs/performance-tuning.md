@@ -53,9 +53,9 @@ Reuse client connections and policy objects. Share a budget between operations
 that should compete for the same retry allowance; separate unrelated downstreams.
 Budgets are in-process objects, so multiple processes or replicas have separate
 allowances. They limit retry decisions, not initial traffic or concurrency.
-The current engine may also consume a token for the terminal failed attempt
-before reporting global exhaustion; do not treat token usage as an exact count
-of additional downstream requests.
+A terminal attempt that exhausts `max_attempts` does not consume a retry token
+or sleep. Tokens count admitted retry decisions; an abort or deferral can still
+prevent a subsequent in-process request.
 
 ## Tune load as well as latency
 

@@ -101,10 +101,10 @@ Selected delays are limited by remaining retry time. Also inspect nested SDK,
 client, queue, or decorator retries when downstream request counts exceed the
 policy's attempt count.
 
-The current engine can emit `retry`, consume a budget token, and sleep after
-the final allowed failed attempt before reporting global exhaustion. A `retry`
-event therefore does not guarantee another operation invocation. Use
-`outcome.attempts` or attempt hooks to count calls.
+The final allowed failed attempt reports exhaustion without emitting `retry`,
+consuming a retry token, or sleeping. Earlier retry decisions may still be
+aborted or deferred, so a `retry` event does not guarantee another operation
+invocation. Use `outcome.attempts` or attempt hooks to count calls.
 
 ## Prepare a useful bug report
 

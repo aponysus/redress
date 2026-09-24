@@ -255,27 +255,6 @@ def _finalize_attempt(
             sleep_s=None,
         )
 
-    if attempt == state.policy.max_attempts:
-        state.last_stop_reason = StopReason.MAX_ATTEMPTS_GLOBAL
-        state.emit(
-            EventName.MAX_ATTEMPTS_EXCEEDED.value,
-            attempt,
-            0.0,
-            state.last_class,
-            exception,
-            stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
-            cause=cause,
-        )
-        return _AttemptOutcome(
-            decision=AttemptDecision.RAISE,
-            classification=classification,
-            exception=exception,
-            result=result,
-            cause=cause,
-            stop_reason=StopReason.MAX_ATTEMPTS_GLOBAL,
-            sleep_s=None,
-        )
-
     return _AttemptOutcome(
         decision=AttemptDecision.RETRY,
         classification=classification,
