@@ -171,6 +171,90 @@ def test_buffered_multipart_preserves_parts_and_caller_headers(
     assert files == original
 
 
+@pytest.mark.parametrize("as_proxy", [False, True])
+@pytest.mark.parametrize("body_kind", ["form", "multipart_form", "uploads"])
+def test_duplicate_mapping_keys_rejected_before_policy_or_send(
+    send: Callable[..., Any], as_proxy: bool, body_kind: str
+) -> None:
+    multidict = pytest.importorskip("multidict")
+    entries = (
+        [("upload", ("one.txt", b"one")), ("upload", ("two.txt", b"two"))]
+        if body_kind == "uploads"
+        else [("tag", "one"), ("tag", "two")]
+    )
+    original = multidict.MultiDict(entries)
+    body = multidict.MultiDictProxy(original) if as_proxy else original
+    kwargs = {"files" if body_kind == "uploads" else "data": body}
+    if body_kind == "multipart_form":
+        kwargs["files"] = {"upload": ("file.txt", b"payload")}
+    attempts = []
+    bodies = []
+
+    def handler(request: Any) -> Any:
+        bodies.append(request.read())
+        return httpx.Response(200)
+
+    with pytest.raises(TypeError, match="duplicate mapping keys"):
+        send(handler, call_kwargs={"on_attempt_start": attempts.append}, **kwargs)
+
+    assert attempts == []
+    assert bodies == []
+    assert list(original.items()) == entries
+
+
+@pytest.mark.parametrize("as_proxy", [False, True])
+def test_unique_mapping_keys_still_replay(send: Callable[..., Any], as_proxy: bool) -> None:
+    multidict = pytest.importorskip("multidict")
+    data = multidict.MultiDict([("tag", "one"), ("other", "two")])
+    bodies = []
+
+    def handler(request: Any) -> Any:
+        bodies.append(request.read())
+        data["tag"] = "changed"
+        return httpx.Response(503 if len(bodies) == 1 else 200)
+
+    response = send(handler, data=multidict.MultiDictProxy(data) if as_proxy else data)
+    assert response.status_code == 200
+    assert bodies == [b"tag=one&other=two", b"tag=one&other=two"]
+
+
+def test_repeated_multipart_fields_and_uploads_replay(send: Callable[..., Any]) -> None:
+    attempts = []
+
+    def handler(request: Any) -> Any:
+        message = BytesParser(policy=default).parsebytes(
+            b"Content-Type: "
+            + request.headers["Content-Type"].encode()
+            + b"\r\n\r\n"
+            + request.read()
+        )
+        attempts.append(
+            [
+                (
+                    part.get_param("name", header="Content-Disposition"),
+                    part.get_filename(),
+                    part.get_payload(decode=True),
+                )
+                for part in message.iter_parts()
+            ]
+        )
+        return httpx.Response(503 if len(attempts) == 1 else 200)
+
+    response = send(
+        handler,
+        data={"tag": ["one", "two"]},
+        files=[("upload", ("one.txt", b"one")), ("upload", ("two.txt", b"two"))],
+    )
+    expected = [
+        ("tag", None, b"one"),
+        ("tag", None, b"two"),
+        ("upload", "one.txt", b"one"),
+        ("upload", "two.txt", b"two"),
+    ]
+    assert response.status_code == 200
+    assert attempts == [expected, expected]
+
+
 @pytest.mark.parametrize("argument", ["content", "data", "files"])
 def test_iterators_rejected_before_consumption_or_send(
     send: Callable[..., Any], argument: str

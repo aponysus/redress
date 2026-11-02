@@ -39,6 +39,12 @@ headers are preserved. HTTPX still performs its normal encoding and validation.
 Form scalar values are `str`, `bytes`, `bool`, `int`, `float`, and `None`;
 multipart metadata uses HTTPX's normal string/`None` and header-mapping forms.
 
+Mappings must have unique keys. A mapping that yields duplicate keys, such as a
+`multidict.MultiDict` with repeated entries, raises `TypeError` before policy
+execution or sending. For repeated form fields, use `data={"tag": ["one", "two"]}`;
+for repeated uploads, use `files=[("upload", ("one.txt", b"one")), ("upload", ("two.txt", b"two"))]`.
+These forms preserve every value on the first attempt and all retries.
+
 Other objects, iterable content (including lists of chunks), generators, async
 iterators, cyclic containers, and file handles raise `TypeError` before the
 policy runs or any request is sent. This includes seekable and in-memory files:

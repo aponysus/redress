@@ -126,8 +126,10 @@ The HTTPX request helpers and client wrappers snapshot buffered body values befo
 entering the policy and give each attempt fresh containers. `content` accepts
 `bytes`, `str`, or `None`; JSON/form containers and multipart parts must contain
 buffered values. Iterators, async iterators, file objects (including seekable
-files), arbitrary objects, and cyclic containers raise `TypeError` before any
-request or policy attempt. This applies even when the policy allows only one
+files), arbitrary objects, cyclic containers, and mappings with duplicate keys
+raise `TypeError` before any request or policy attempt. For repeated form fields,
+use list values; for repeated uploads, use a list of `(name, part)` pairs.
+This applies even when the policy allows only one
 attempt. A true `skip_if` sends once without validation or policy execution.
 See [request body replay](recipes/http.md#request-body-replay) for the supported
 types, stream migration example, and requests/aiohttp limitations.

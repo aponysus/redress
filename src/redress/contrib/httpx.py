@@ -205,12 +205,17 @@ def _snapshot_body_value(value: Any, argument: str, active: set[int]) -> Any:
     active.add(id(value))
     try:
         if isinstance(value, Mapping):
-            return {
-                _snapshot_body_value(key, argument, active): _snapshot_body_value(
-                    item, argument, active
-                )
-                for key, item in value.items()
-            }
+            snapshot: dict[Any, Any] = {}
+            for key, item in value.items():
+                key = _snapshot_body_value(key, argument, active)
+                if key in snapshot:
+                    raise TypeError(
+                        f"HTTPX retries require replayable bodies; {argument} contains "
+                        "duplicate mapping keys. Use lists of values for repeated form "
+                        "fields or a list of (name, part) pairs for repeated uploads."
+                    )
+                snapshot[key] = _snapshot_body_value(item, argument, active)
+            return snapshot
         if type(value) in (list, tuple):
             items = [_snapshot_body_value(item, argument, active) for item in value]
             return tuple(items) if type(value) is tuple else items
@@ -251,7 +256,9 @@ def request_with_retry(
     A true `skip_if` bypasses both validation and the policy, sending once.
 
     Raises:
-        TypeError: A body contains unsupported objects, iterators, or cycles.
+        TypeError: A body contains unsupported objects, iterators, cycles, or
+            mappings with duplicate keys. Use list values for repeated form
+            fields and a list of pairs for repeated uploads.
             Recreate streams/files inside an operation passed to `policy.call()`.
     """
     normalized_method = method.upper()
@@ -290,7 +297,9 @@ async def arequest_with_retry(
     A true `skip_if` bypasses both validation and the policy, sending once.
 
     Raises:
-        TypeError: A body contains unsupported objects, iterators, or cycles.
+        TypeError: A body contains unsupported objects, iterators, cycles, or
+            mappings with duplicate keys. Use list values for repeated form
+            fields and a list of pairs for repeated uploads.
             Recreate streams/files inside an operation passed to `policy.call()`.
     """
     normalized_method = method.upper()
