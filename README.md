@@ -373,6 +373,11 @@ OK: 'app_retry:cfg' passed config checks.
 
 ## Examples (in `docs/snippets/`)
 
+HTTP retries need both a safely repeatable operation and a replayable body.
+The HTTPX wrappers snapshot buffered bodies and reject streams/file handles
+before sending. For supported body types and per-attempt stream creation, see
+[HTTP body replay](docs/recipes/http.md#request-body-replay).
+
 - Sync httpx demo: `uv pip install httpx` then `uv run python docs/snippets/httpx_sync_retry.py`
 - Async httpx demo: `uv pip install httpx` then `uv run python docs/snippets/httpx_async_retry.py`
 - Async worker loop with retries: `uv run python docs/snippets/async_worker_retry.py`

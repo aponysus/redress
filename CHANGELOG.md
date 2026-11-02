@@ -5,6 +5,7 @@ Release notes are maintained here.
 ## [Unreleased]
 
 ### Fixed
+- HTTPX sync/async request helpers and client wrappers now snapshot buffered bodies for retries and reject unsupported streams, iterators, and file handles before policy execution or sending. Buffered multipart parts remain supported; `skip_if` retains its single-send bypass. Documented body replay requirements, per-attempt stream creation, and the remaining replay limitations in requests/aiohttp wrappers.
 - Isolated ordinary exceptions from `on_attempt_start` and `on_attempt_end` across sync/async execution and `call()`/`execute()`, including policies without retries. Observer failures no longer repeat successful operations, replace operation failures, or affect retry budgets and circuit-breaker outcomes. Cancellation and process-exit exceptions still propagate.
 
 ## [1.4.2] - 2026-09-24
