@@ -277,6 +277,10 @@ def metric_hook(event, attempt, sleep_s, tags):
 policy.call(my_op, on_metric=metric_hook)
 ```
 
+The Prometheus helpers follow each metric's declared label schema and fill missing
+values with empty strings. See the [Prometheus integration](docs/observability.md#prometheus-contrib-hook)
+for counter and retry-delay histogram examples.
+
 ## Backoff Strategies
 
 Strategy signature (context-aware):
