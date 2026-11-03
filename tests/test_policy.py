@@ -2492,7 +2492,7 @@ def test_policy_call_no_retry_abort_if_raises() -> None:
         policy.call(lambda: "ok", abort_if=lambda: True)
 
 
-def test_policy_call_no_retry_abort_if_records_cancel() -> None:
+def test_policy_call_no_retry_preflight_abort_does_not_record_cancel() -> None:
     breaker = CircuitBreaker(
         failure_threshold=1,
         window_s=10.0,
@@ -2512,4 +2512,4 @@ def test_policy_call_no_retry_abort_if_records_cancel() -> None:
     with pytest.raises(AbortRetryError):
         policy.call(lambda: "ok", abort_if=lambda: True)
 
-    assert called["n"] == 1
+    assert called["n"] == 0  # Preflight abort never acquired an admission.

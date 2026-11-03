@@ -7,9 +7,10 @@ reducing duplication in policy.py and async_policy.py.
 
 import time
 from dataclasses import dataclass
-from typing import Any
+from types import TracebackType
+from typing import Any, Literal
 
-from ..circuit import CircuitBreaker, CircuitState
+from ..circuit import CircuitBreaker, CircuitState, _BreakerDecision
 from ..classify import default_classifier
 from ..errors import (
     CircuitOpenError,
@@ -47,6 +48,19 @@ class ExecutionContext:
     on_metric: MetricHook | None
     on_log: LogHook | None
     operation: str | None
+    breaker_decision: _BreakerDecision | None = None
+
+    def __enter__(self) -> "ExecutionContext":
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        # This also covers failures in admission events and exception handlers.
+        record_cancel(self)
 
     @classmethod
     def create(
@@ -102,6 +116,7 @@ def check_breaker(ctx: ExecutionContext) -> None:
         return
 
     decision = ctx.breaker.allow()
+    ctx.breaker_decision = decision if decision.allowed else None
     ctx.emit_breaker_event(decision.event, decision.state)
 
     if not decision.allowed:
@@ -110,26 +125,44 @@ def check_breaker(ctx: ExecutionContext) -> None:
 
 def record_success(ctx: ExecutionContext) -> None:
     """Record success with circuit breaker and emit event if state changed."""
-    if ctx.breaker is None:
-        return
-
-    event = ctx.breaker.record_success()
-    ctx.emit_breaker_event(event, ctx.breaker.state)
+    _complete_breaker(ctx, "success")
 
 
 def record_cancel(ctx: ExecutionContext) -> None:
     """Record cancellation with circuit breaker (no event emitted)."""
-    if ctx.breaker is not None:
-        ctx.breaker.record_cancel()
+    _complete_breaker(ctx, "cancel")
 
 
 def record_failure(ctx: ExecutionContext, klass: ErrorClass) -> None:
     """Record failure with circuit breaker and emit event if state changed."""
-    if ctx.breaker is None:
+    _complete_breaker(ctx, "failure", klass)
+
+
+def _complete_breaker(
+    ctx: ExecutionContext,
+    outcome: Literal["success", "failure", "cancel"],
+    klass: ErrorClass | None = None,
+) -> None:
+    breaker = ctx.breaker
+    decision = ctx.breaker_decision
+    if breaker is None or decision is None:
         return
 
-    event = ctx.breaker.record_failure(klass)
-    ctx.emit_breaker_event(event, ctx.breaker.state, klass)
+    if isinstance(breaker, CircuitBreaker):
+        event = breaker._complete(decision, outcome, klass)
+    elif outcome == "success":
+        # Preserve support for duck-typed breakers such as FakeCircuitBreaker.
+        event = breaker.record_success()
+    elif outcome == "failure":
+        assert klass is not None
+        event = breaker.record_failure(klass)
+    else:
+        breaker.record_cancel()
+        event = None
+
+    # Retire the context before observers run: an observer may start another probe.
+    ctx.breaker_decision = None
+    ctx.emit_breaker_event(event, breaker.state, klass)
 
 
 def classify_for_breaker(exc: BaseException, retry: Any) -> ErrorClass:
@@ -155,10 +188,9 @@ def check_abort_no_retry(
     """
     Check abort predicate when there's no retry policy configured.
 
-    Returns True if should abort (and records cancel with breaker).
+    Returns True if execution should abort before acquiring breaker admission.
     """
     if abort_if is not None and abort_if():
-        record_cancel(ctx)
         return True
     return False
 

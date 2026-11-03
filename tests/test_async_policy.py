@@ -1290,7 +1290,7 @@ def test_async_policy_call_no_retry_abort_if_raises() -> None:
         asyncio.run(policy.call(ok, abort_if=lambda: True))
 
 
-def test_async_policy_call_no_retry_abort_if_records_cancel() -> None:
+def test_async_policy_call_no_retry_preflight_abort_does_not_record_cancel() -> None:
     breaker = CircuitBreaker(
         failure_threshold=1,
         window_s=10.0,
@@ -1313,4 +1313,4 @@ def test_async_policy_call_no_retry_abort_if_records_cancel() -> None:
     with pytest.raises(AbortRetryError):
         asyncio.run(policy.call(ok, abort_if=lambda: True))
 
-    assert called["n"] == 1
+    assert called["n"] == 0  # Preflight abort never acquired an admission.

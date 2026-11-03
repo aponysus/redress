@@ -36,6 +36,10 @@ policy = Policy(
 
 **Circuit breaking.** Policies can open a circuit after repeated failures, failing fast instead of piling up retries. Retries and circuit breakers are treated as policy responses to classified failure, not separate mechanisms.
 
+Cancelled or interrupted policy executions release their unfinished breaker
+admissions, allowing recovery probes to continue. Cleanup and late results cannot
+resolve another execution's probe; see [circuit breakers](docs/concepts/circuit-breakers.md).
+
 **Sync/async symmetry.** `Policy` and `AsyncPolicy` share the same API and configuration; `RetryPolicy` / `AsyncRetryPolicy` remain convenient shortcuts.
 
 **SDK and framework integrations.** First-class contrib modules for OpenAI and Anthropic, plus HTTP/framework integrations and thin extras for boto3, grpc, redis, urllib3, aiohttp, and pyodbc.
