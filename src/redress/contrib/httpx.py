@@ -6,6 +6,7 @@ through a redress policy, plus small HTTP-focused helpers.
 """
 
 from collections.abc import Awaitable, Callable, Mapping
+from copy import deepcopy
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from types import TracebackType
@@ -186,6 +187,55 @@ def _choose_option(default: OptionT, override: OptionT | None) -> OptionT:
     return override
 
 
+def _unreplayable_body(argument: str) -> TypeError:
+    return TypeError(
+        f"HTTPX retries require replayable bodies; unsupported {argument}. "
+        "Use buffered bytes/text, JSON, form data, or multipart parts containing bytes/text. "
+        "For streams and files, create a fresh body inside policy.call() on each attempt, "
+        "or use skip_if to bypass the policy and send once."
+    )
+
+
+def _snapshot_body_value(value: Any, argument: str, active: set[int]) -> Any:
+    """Copy buffered containers without reading streams or copying arbitrary objects."""
+    if value is None or type(value) in (str, bytes, bool, int, float):
+        return value
+    if id(value) in active:
+        raise _unreplayable_body(argument)
+    active.add(id(value))
+    try:
+        if isinstance(value, Mapping):
+            snapshot: dict[Any, Any] = {}
+            for key, item in value.items():
+                key = _snapshot_body_value(key, argument, active)
+                if key in snapshot:
+                    raise TypeError(
+                        f"HTTPX retries require replayable bodies; {argument} contains "
+                        "duplicate mapping keys. Use lists of values for repeated form "
+                        "fields or a list of (name, part) pairs for repeated uploads."
+                    )
+                snapshot[key] = _snapshot_body_value(item, argument, active)
+            return snapshot
+        if type(value) in (list, tuple):
+            items = [_snapshot_body_value(item, argument, active) for item in value]
+            return tuple(items) if type(value) is tuple else items
+        raise _unreplayable_body(argument)
+    finally:
+        active.remove(id(value))
+
+
+def _snapshot_body(request_kwargs: Mapping[str, Any]) -> dict[str, Any]:
+    """Validate before policy execution, retaining only independently replayable values."""
+    content = request_kwargs.get("content")
+    if content is not None and type(content) not in (str, bytes):
+        raise _unreplayable_body("content (expected bytes, str, or None)")
+    return {
+        name: _snapshot_body_value(request_kwargs[name], name, set())
+        for name in ("content", "data", "json", "files")
+        if name in request_kwargs
+    }
+
+
 def request_with_retry(
     client: SyncClientLike[ResponseT],
     policy: SyncPolicyLike[ResponseT],
@@ -197,13 +247,25 @@ def request_with_retry(
     call_kwargs: Mapping[str, Any] | CallKwargsProvider | None = None,
     **request_kwargs: Any,
 ) -> ResponseT:
-    """
-    Execute `client.request(...)` wrapped by a sync policy call.
+    """Execute `client.request(...)` wrapped by a sync policy call.
+
+    Body values are snapshotted before entering the policy. Supported bodies are
+    bytes/text content, buffered JSON/form containers, and multipart parts with
+    bytes/text payloads. Each attempt receives a fresh copy of the containers.
+    Streams and file objects (including seekable files) are never read or rewound.
+    A true `skip_if` bypasses both validation and the policy, sending once.
+
+    Raises:
+        TypeError: A body contains unsupported objects, iterators, cycles, or
+            mappings with duplicate keys. Use list values for repeated form
+            fields and a list of pairs for repeated uploads.
+            Recreate streams/files inside an operation passed to `policy.call()`.
     """
     normalized_method = method.upper()
     if skip_if is not None and skip_if(normalized_method, url):
         return client.request(method, url, **request_kwargs)
 
+    body = _snapshot_body(request_kwargs)
     kwargs = _resolve_call_kwargs(call_kwargs, normalized_method, url)
     if "operation" not in kwargs:
         operation_value = _resolve_operation(operation, normalized_method, url)
@@ -211,7 +273,8 @@ def request_with_retry(
             kwargs["operation"] = operation_value
 
     def _call() -> ResponseT:
-        return client.request(method, url, **request_kwargs)
+        # HTTPX may mutate multipart headers; keep the snapshot private to this call.
+        return client.request(method, url, **{**request_kwargs, **deepcopy(body)})
 
     return policy.call(_call, **kwargs)
 
@@ -227,13 +290,23 @@ async def arequest_with_retry(
     call_kwargs: Mapping[str, Any] | CallKwargsProvider | None = None,
     **request_kwargs: Any,
 ) -> ResponseT:
-    """
-    Execute `client.request(...)` wrapped by an async policy call.
+    """Execute `client.request(...)` wrapped by an async policy call.
+
+    Uses the same buffered-body snapshot rules as `request_with_retry`.
+    Sync/async streams and file objects are rejected before entering the policy.
+    A true `skip_if` bypasses both validation and the policy, sending once.
+
+    Raises:
+        TypeError: A body contains unsupported objects, iterators, cycles, or
+            mappings with duplicate keys. Use list values for repeated form
+            fields and a list of pairs for repeated uploads.
+            Recreate streams/files inside an operation passed to `policy.call()`.
     """
     normalized_method = method.upper()
     if skip_if is not None and skip_if(normalized_method, url):
         return await client.request(method, url, **request_kwargs)
 
+    body = _snapshot_body(request_kwargs)
     kwargs = _resolve_call_kwargs(call_kwargs, normalized_method, url)
     if "operation" not in kwargs:
         operation_value = _resolve_operation(operation, normalized_method, url)
@@ -241,7 +314,7 @@ async def arequest_with_retry(
             kwargs["operation"] = operation_value
 
     async def _call() -> ResponseT:
-        return await client.request(method, url, **request_kwargs)
+        return await client.request(method, url, **{**request_kwargs, **deepcopy(body)})
 
     return await policy.call(_call, **kwargs)
 
