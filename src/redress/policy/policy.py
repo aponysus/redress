@@ -72,46 +72,45 @@ class Policy:
         on_attempt_start: AttemptHook | None = None,
         on_attempt_end: AttemptHook | None = None,
     ) -> Any:
-        ctx = ExecutionContext.create(self.circuit_breaker, on_metric, on_log, operation)
+        with ExecutionContext.create(self.circuit_breaker, on_metric, on_log, operation) as ctx:
+            # Pre-flight abort check (no retry configured)
+            if self.retry is None and check_abort_no_retry(ctx, abort_if):
+                raise AbortRetryError()
 
-        # Pre-flight abort check (no retry configured)
-        if self.retry is None and check_abort_no_retry(ctx, abort_if):
-            raise AbortRetryError()
+            # Circuit breaker check
+            check_breaker(ctx)
 
-        # Circuit breaker check
-        check_breaker(ctx)
+            try:
+                if self.retry is None:
+                    result = self._call_without_retry(ctx, func, on_attempt_start, on_attempt_end)
+                else:
+                    result = self.retry.call(
+                        func,
+                        on_metric=on_metric,
+                        on_log=on_log,
+                        operation=operation,
+                        abort_if=abort_if,
+                        sleep=sleep,
+                        before_sleep=before_sleep,
+                        sleeper=sleeper,
+                        on_attempt_start=on_attempt_start,
+                        on_attempt_end=on_attempt_end,
+                    )
+                record_success(ctx)
+                return result
 
-        try:
-            if self.retry is None:
-                result = self._call_without_retry(ctx, func, on_attempt_start, on_attempt_end)
-            else:
-                result = self.retry.call(
-                    func,
-                    on_metric=on_metric,
-                    on_log=on_log,
-                    operation=operation,
-                    abort_if=abort_if,
-                    sleep=sleep,
-                    before_sleep=before_sleep,
-                    sleeper=sleeper,
-                    on_attempt_start=on_attempt_start,
-                    on_attempt_end=on_attempt_end,
-                )
-            record_success(ctx)
-            return result
-
-        except (KeyboardInterrupt, SystemExit):
-            record_cancel(ctx)
-            raise
-        except AbortRetryError as exc:
-            self._handle_abort_call(ctx, exc, on_attempt_end)
-            raise
-        except RetryExhaustedError as exc:
-            self._handle_exhausted_call(ctx, exc)
-            raise
-        except Exception as exc:
-            self._handle_exception_call(ctx, exc, on_attempt_end)
-            raise
+            except (KeyboardInterrupt, SystemExit):
+                record_cancel(ctx)
+                raise
+            except AbortRetryError as exc:
+                self._handle_abort_call(ctx, exc, on_attempt_end)
+                raise
+            except RetryExhaustedError as exc:
+                self._handle_exhausted_call(ctx, exc)
+                raise
+            except Exception as exc:
+                self._handle_exception_call(ctx, exc, on_attempt_end)
+                raise
 
     def _call_without_retry(
         self,
@@ -211,38 +210,38 @@ class Policy:
         on_attempt_end: AttemptHook | None = None,
         capture_timeline: bool | RetryTimeline | None = None,
     ) -> RetryOutcome[Any]:
-        ctx = ExecutionContext.create(self.circuit_breaker, on_metric, on_log, operation)
+        with ExecutionContext.create(self.circuit_breaker, on_metric, on_log, operation) as ctx:
+            # Pre-flight abort check (no retry configured)
+            if self.retry is None and check_abort_no_retry(ctx, abort_if):
+                return build_aborted_outcome(ctx)
 
-        # Pre-flight abort check (no retry configured)
-        if self.retry is None and check_abort_no_retry(ctx, abort_if):
-            return build_aborted_outcome(ctx)
+            # Circuit breaker check
+            if ctx.breaker is not None:
+                decision = ctx.breaker.allow()
+                ctx.breaker_decision = decision if decision.allowed else None
+                ctx.emit_breaker_event(decision.event, decision.state)
+                if not decision.allowed:
+                    return build_circuit_open_outcome(ctx, decision.state.value)
 
-        # Circuit breaker check
-        if ctx.breaker is not None:
-            decision = ctx.breaker.allow()
-            ctx.emit_breaker_event(decision.event, decision.state)
-            if not decision.allowed:
-                return build_circuit_open_outcome(ctx, decision.state.value)
+            # Delegate to retry if configured
+            if self.retry is not None:
+                return self._execute_with_retry(
+                    ctx,
+                    func,
+                    on_metric,
+                    on_log,
+                    operation,
+                    abort_if,
+                    sleep,
+                    before_sleep,
+                    sleeper,
+                    on_attempt_start,
+                    on_attempt_end,
+                    capture_timeline,
+                )
 
-        # Delegate to retry if configured
-        if self.retry is not None:
-            return self._execute_with_retry(
-                ctx,
-                func,
-                on_metric,
-                on_log,
-                operation,
-                abort_if,
-                sleep,
-                before_sleep,
-                sleeper,
-                on_attempt_start,
-                on_attempt_end,
-                capture_timeline,
-            )
-
-        # No retry - single attempt
-        return self._execute_without_retry(ctx, func, on_attempt_start, on_attempt_end)
+            # No retry - single attempt
+            return self._execute_without_retry(ctx, func, on_attempt_start, on_attempt_end)
 
     def _execute_with_retry(
         self,

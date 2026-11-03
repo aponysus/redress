@@ -2,8 +2,9 @@ import threading
 import time
 from collections import deque
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Literal
 
 from .errors import ErrorClass
 from .events import EventName
@@ -15,11 +16,18 @@ class CircuitState(str, Enum):
     HALF_OPEN = "half_open"
 
 
+@dataclass
+class _BreakerAdmission:
+    generation: int
+    completed: bool = False
+
+
 @dataclass(frozen=True)
 class _BreakerDecision:
     allowed: bool
     state: CircuitState
     event: str | None = None
+    _admission: _BreakerAdmission | None = field(default=None, repr=False, compare=False)
 
 
 class CircuitBreaker:
@@ -66,10 +74,12 @@ class CircuitBreaker:
 
         self._state = CircuitState.CLOSED
         self._opened_at: float | None = None
-        self._probe_in_flight = False
+        self._generation = 0
+        self._probe: _BreakerAdmission | None = None
         self._failures: deque[float] = deque()
         self._class_failures: dict[ErrorClass, deque[float]] = {}
-        self._lock = threading.Lock()
+        # Owned completion checks and the public record_* methods share this lock.
+        self._lock = threading.RLock()
 
     @property
     def state(self) -> CircuitState:
@@ -86,60 +96,91 @@ class CircuitBreaker:
                     self._opened_at = now
                 if now - opened_at >= self._recovery_timeout_s:
                     self._state = CircuitState.HALF_OPEN
-                    self._probe_in_flight = True
-                    return _BreakerDecision(True, self._state, EventName.CIRCUIT_HALF_OPEN.value)
+                    self._probe = _BreakerAdmission(self._generation)
+                    return _BreakerDecision(
+                        True, self._state, EventName.CIRCUIT_HALF_OPEN.value, self._probe
+                    )
                 return _BreakerDecision(False, self._state, EventName.CIRCUIT_REJECTED.value)
 
             if self._state is CircuitState.HALF_OPEN:
-                if self._probe_in_flight:
+                if self._probe is not None:
                     return _BreakerDecision(
                         False,
                         self._state,
                         EventName.CIRCUIT_REJECTED.value,
                     )
-                self._probe_in_flight = True
-                return _BreakerDecision(True, self._state, None)
+                self._probe = _BreakerAdmission(self._generation)
+                return _BreakerDecision(True, self._state, None, self._probe)
 
-            return _BreakerDecision(True, self._state, None)
+            return _BreakerDecision(True, self._state, None, _BreakerAdmission(self._generation))
 
     def record_success(self) -> str | None:
         with self._lock:
-            if self._state is CircuitState.HALF_OPEN:
-                self._state = CircuitState.CLOSED
-                self._opened_at = None
-                self._probe_in_flight = False
-                self._clear_failures()
-                return EventName.CIRCUIT_CLOSED.value
-            return None
+            return self._record_success_locked()
 
     def record_failure(self, klass: ErrorClass) -> str | None:
         now = self._clock()
         with self._lock:
-            if self._state is CircuitState.HALF_OPEN:
-                self._state = CircuitState.OPEN
-                self._opened_at = now
-                self._probe_in_flight = False
-                self._clear_failures()
-                return EventName.CIRCUIT_OPENED.value
-
-            if self._state is CircuitState.OPEN:
-                return None
-
-            if klass not in self._trip_on:
-                return None
-
-            should_open = self._note_failure(klass, now)
-            if should_open:
-                self._state = CircuitState.OPEN
-                self._opened_at = now
-                self._clear_failures()
-                return EventName.CIRCUIT_OPENED.value
-            return None
+            return self._record_failure_locked(klass, now)
 
     def record_cancel(self) -> None:
         with self._lock:
             if self._state is CircuitState.HALF_OPEN:
-                self._probe_in_flight = False
+                self._probe = None
+
+    def _complete(
+        self,
+        decision: _BreakerDecision,
+        outcome: Literal["success", "failure", "cancel"],
+        klass: ErrorClass | None = None,
+    ) -> str | None:
+        """Settle a policy admission once, ignoring completions from older generations."""
+        with self._lock:
+            admission = decision._admission
+            if admission is None or admission.completed:
+                return None
+            if admission.generation != self._generation:
+                admission.completed = True
+                return None
+            if self._state is CircuitState.HALF_OPEN and self._probe is not admission:
+                admission.completed = True
+                return None
+            if outcome == "success":
+                event = self.record_success()
+            elif outcome == "failure":
+                assert klass is not None
+                event = self.record_failure(klass)
+            else:
+                self.record_cancel()
+                event = None
+            admission.completed = True
+            return event
+
+    def _record_success_locked(self) -> str | None:
+        if self._state is CircuitState.HALF_OPEN:
+            self._state = CircuitState.CLOSED
+            self._generation += 1
+            self._opened_at = None
+            self._probe = None
+            self._clear_failures()
+            return EventName.CIRCUIT_CLOSED.value
+        return None
+
+    def _record_failure_locked(self, klass: ErrorClass, now: float) -> str | None:
+        if self._state is CircuitState.HALF_OPEN:
+            should_open = True
+        elif self._state is CircuitState.OPEN or klass not in self._trip_on:
+            return None
+        else:
+            should_open = self._note_failure(klass, now)
+        if should_open:
+            self._state = CircuitState.OPEN
+            self._generation += 1
+            self._opened_at = now
+            self._probe = None
+            self._clear_failures()
+            return EventName.CIRCUIT_OPENED.value
+        return None
 
     def _note_failure(self, klass: ErrorClass, now: float) -> bool:
         self._prune(self._failures, now)

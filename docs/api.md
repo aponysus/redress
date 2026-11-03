@@ -27,6 +27,8 @@
   - `class_thresholds` per-class override thresholds
   - `clock` optional monotonic clock override
   - Use with `Policy(circuit_breaker=...)`
+  - Policy admissions are released on cancellation or an escaping exception when no final breaker outcome was recorded; cancellation and process-exit exceptions propagate unchanged.
+  - Only the execution that owns the current half-open probe can complete or release it. Rejected calls and preflight aborts do not alter another execution's admission.
 - `CircuitState` enum
 ## Budgets
 

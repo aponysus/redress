@@ -17,9 +17,31 @@ retries and fail-fast behavior.
 - **Half-open**: after `recovery_timeout_s`, one probe call is allowed.
   - Success closes the circuit.
   - Failure re-opens it.
+  - Cancelling or interrupting an unfinished probe releases its admission. The
+    circuit stays half-open and the next call can probe immediately.
 
 A breaker records failures by **ErrorClass**, not by raw exception types. That means
 your classifier controls when the breaker trips.
+
+## Cancellation and overlapping executions
+
+`Policy` and `AsyncPolicy` track admission for each `call()` or `execute()`, with
+or without retries. If execution exits before recording a final breaker outcome,
+its admission is released. This includes cancellation during the operation or
+retry sleep, cancellation raised by callbacks, and exceptions escaping retry
+processing. Cancellation, `KeyboardInterrupt`, and `SystemExit` still propagate;
+cleanup does not turn them into successful results or structured outcomes.
+
+Only the current recovery probe may close or re-open the half-open circuit.
+Results and cleanup from executions admitted before an intervening circuit
+transition are ignored by the breaker. A rejected call or a preflight abort has
+no admission to release. Once a final outcome has been recorded, an exception
+from a later callback cannot release a newer probe.
+
+Use the policies for concurrent execution with these ownership guarantees. The
+low-level `allow()`, `record_success()`, `record_failure(klass)`, and
+`record_cancel()` methods retain their manual state-management behavior; callers
+using them directly must coordinate their own admissions and completions.
 
 ## Configuration knobs
 
