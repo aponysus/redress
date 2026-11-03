@@ -2,7 +2,7 @@
 
 import asyncio
 import threading
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
@@ -265,45 +265,105 @@ def test_terminal_callback_cannot_release_a_later_probe(asynchronous: bool, surf
 
 @pytest.mark.parametrize("surface", ["call", "execute"])
 @pytest.mark.parametrize("with_retry", [False, True])
-def test_cancelling_older_async_task_leaves_active_probe_owned(
-    surface: str, with_retry: bool
+@pytest.mark.parametrize("completion", ["success", "failure", "cancel"])
+@pytest.mark.parametrize("probe_fails", [False, True])
+def test_older_async_task_cannot_resolve_active_probe(
+    surface: str, with_retry: bool, completion: str, probe_fails: bool
 ) -> None:
     clock = Clock()
     breaker = CircuitBreaker(failure_threshold=1, recovery_timeout_s=1.0, clock=clock)
     policy = make_policy(True, breaker, with_retry, max_attempts=1)
+    old_error = ConnectionError("old execution failed")
+    probe_error = ConnectionError("probe still unavailable")
+    transitions = []
+
+    def on_log(event: str, fields: dict[str, Any]) -> None:
+        if event.startswith("circuit_"):
+            transitions.append(event)
 
     async def run() -> None:
-        old_started = asyncio.Event()
+        old_started, release_old = asyncio.Event(), asyncio.Event()
         probe_started = asyncio.Event()
         release_probe = asyncio.Event()
 
-        async def old_operation() -> None:
+        async def execute(operation: Callable[[], Awaitable[Any]]) -> Any:
+            try:
+                return await getattr(policy, surface)(operation, on_log=on_log)
+            except ConnectionError as exc:
+                return exc
+
+        async def wait_started(task: asyncio.Task[Any], entered: asyncio.Event) -> None:
+            waiter = asyncio.create_task(entered.wait())
+            try:
+                await asyncio.wait({task, waiter}, return_when=asyncio.FIRST_COMPLETED)
+                assert entered.is_set(), "execution exited without starting the operation"
+            finally:
+                waiter.cancel()
+                await asyncio.gather(waiter, return_exceptions=True)
+
+        async def old_operation() -> str:
             old_started.set()
-            await asyncio.Event().wait()
+            await release_old.wait()
+            if completion == "failure":
+                raise old_error
+            return "old success"
+
+        async def failing_operation() -> None:
+            raise ConnectionError("open circuit through another execution")
 
         async def probe_operation() -> str:
             probe_started.set()
             await release_probe.wait()
+            if probe_fails:
+                raise probe_error
             return "probe recovered"
 
-        old = asyncio.create_task(getattr(policy, surface)(old_operation))
+        old = asyncio.create_task(execute(old_operation))
         probe = None
         try:
-            await old_started.wait()
-            breaker.record_failure(ErrorClass.TRANSIENT)
+            await wait_started(old, old_started)
+            await execute(failing_operation)
+            assert breaker.state is CircuitState.OPEN
             clock.now = 2.0
-            probe = asyncio.create_task(getattr(policy, surface)(probe_operation))
-            await probe_started.wait()
-            old.cancel("old execution")
-            with pytest.raises(asyncio.CancelledError):
-                await old
+            probe = asyncio.create_task(execute(probe_operation))
+            await wait_started(probe, probe_started)
+            if completion == "cancel":
+                old.cancel("old execution")
+                with pytest.raises(asyncio.CancelledError):
+                    await old
+            else:
+                release_old.set()
+                result = await old
+                if completion == "failure":
+                    assert (result.last_exception if surface == "execute" else result) is old_error
+                    if surface == "execute":
+                        assert not result.ok
+                else:
+                    assert (result.value if surface == "execute" else result) == "old success"
+                    if surface == "execute":
+                        assert result.ok
             assert not probe.done()
             assert breaker.state is CircuitState.HALF_OPEN
             assert not breaker.allow().allowed
+            assert transitions == ["circuit_opened", "circuit_half_open"]
             release_probe.set()
             result = await probe
-            assert (result.value if surface == "execute" else result) == "probe recovered"
-            assert breaker.state is CircuitState.CLOSED
+            if probe_fails:
+                assert (result.last_exception if surface == "execute" else result) is probe_error
+                if surface == "execute":
+                    assert not result.ok
+                assert breaker.state is CircuitState.OPEN
+                assert not breaker.allow().allowed
+            else:
+                assert (result.value if surface == "execute" else result) == "probe recovered"
+                if surface == "execute":
+                    assert result.ok
+                assert breaker.state is CircuitState.CLOSED
+            assert transitions == [
+                "circuit_opened",
+                "circuit_half_open",
+                "circuit_opened" if probe_fails else "circuit_closed",
+            ]
         finally:
             old.cancel()
             if probe is not None:
@@ -317,41 +377,87 @@ def test_cancelling_older_async_task_leaves_active_probe_owned(
 
 @pytest.mark.parametrize("surface", ["call", "execute"])
 @pytest.mark.parametrize("with_retry", [False, True])
-def test_interrupted_older_thread_leaves_active_probe_owned(surface: str, with_retry: bool) -> None:
+@pytest.mark.parametrize("completion", ["success", "failure", "cancel"])
+@pytest.mark.parametrize("probe_fails", [False, True])
+def test_older_thread_cannot_resolve_active_probe(
+    surface: str, with_retry: bool, completion: str, probe_fails: bool
+) -> None:
     clock = Clock()
     breaker = CircuitBreaker(failure_threshold=1, recovery_timeout_s=1.0, clock=clock)
     policy = make_policy(False, breaker, with_retry, max_attempts=1)
     old_started, release_old = threading.Event(), threading.Event()
     probe_started, release_probe = threading.Event(), threading.Event()
-    error = SystemExit("old execution")
+    old_error = (
+        SystemExit("old execution")
+        if completion == "cancel"
+        else ConnectionError("old execution failed")
+    )
+    probe_error = ConnectionError("probe still unavailable")
+    transitions = []
 
-    def old_operation() -> None:
+    def on_log(event: str, fields: dict[str, Any]) -> None:
+        if event.startswith("circuit_"):
+            transitions.append(event)
+
+    def old_operation() -> str:
         old_started.set()
         assert release_old.wait(timeout=5)
-        raise error
+        if completion != "success":
+            raise old_error
+        return "old success"
+
+    def failing_operation() -> None:
+        raise ConnectionError("open circuit through another execution")
 
     def probe_operation() -> str:
         probe_started.set()
         assert release_probe.wait(timeout=5)
+        if probe_fails:
+            raise probe_error
         return "probe recovered"
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         try:
-            old = pool.submit(invoke, policy, surface, old_operation)
+            old = pool.submit(invoke, policy, surface, old_operation, on_log=on_log)
             assert old_started.wait(timeout=5)
-            breaker.record_failure(ErrorClass.TRANSIENT)
+            invoke(policy, surface, failing_operation, on_log=on_log)
+            assert breaker.state is CircuitState.OPEN
             clock.now = 2.0
-            probe = pool.submit(invoke, policy, surface, probe_operation)
+            probe = pool.submit(invoke, policy, surface, probe_operation, on_log=on_log)
             assert probe_started.wait(timeout=5)
             release_old.set()
-            assert old.result(timeout=5) is error
+            result = old.result(timeout=5)
+            if completion == "success":
+                assert (result.value if surface == "execute" else result) == "old success"
+                if surface == "execute":
+                    assert result.ok
+            elif completion == "failure" and surface == "execute":
+                assert not result.ok
+                assert result.last_exception is old_error
+            else:
+                assert result is old_error
             assert not probe.done()
             assert breaker.state is CircuitState.HALF_OPEN
             assert not breaker.allow().allowed
+            assert transitions == ["circuit_opened", "circuit_half_open"]
             release_probe.set()
             result = probe.result(timeout=5)
-            assert (result.value if surface == "execute" else result) == "probe recovered"
-            assert breaker.state is CircuitState.CLOSED
+            if probe_fails:
+                assert (result.last_exception if surface == "execute" else result) is probe_error
+                if surface == "execute":
+                    assert not result.ok
+                assert breaker.state is CircuitState.OPEN
+                assert not breaker.allow().allowed
+            else:
+                assert (result.value if surface == "execute" else result) == "probe recovered"
+                if surface == "execute":
+                    assert result.ok
+                assert breaker.state is CircuitState.CLOSED
+            assert transitions == [
+                "circuit_opened",
+                "circuit_half_open",
+                "circuit_opened" if probe_fails else "circuit_closed",
+            ]
         finally:
             release_old.set()
             release_probe.set()
