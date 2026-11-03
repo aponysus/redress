@@ -10,6 +10,8 @@ class _FakePromCounter:
         self.calls: list[dict[str, object]] = []
 
     def labels(self, *, event: str, **tags: object):
+        if set(tags) != {"class", "operation"}:
+            raise ValueError("Incorrect label names")
         self.calls.append({"event": event, **tags})
         return self
 
@@ -37,9 +39,13 @@ class _FakeMeter:
 
 def test_prometheus_metric_hook_invokes_labels() -> None:
     counter = _FakePromCounter()
-    hook = prometheus_metric_hook(counter)
-    hook("retry", 1, 0.5, {"class": "TRANSIENT", "operation": "fetch"})
-    assert counter.calls == [{"event": "retry", "class": "TRANSIENT", "operation": "fetch"}]
+    hook = prometheus_metric_hook(counter, label_names=("event", "class", "operation"))
+    hook("retry", 1, 0.5, {"class": "TRANSIENT", "operation": "fetch", "cause": "exception"})
+    hook("success", 2, 0.0, {"operation": "fetch"})
+    assert counter.calls == [
+        {"event": "retry", "class": "TRANSIENT", "operation": "fetch"},
+        {"event": "success", "class": "", "operation": "fetch"},
+    ]
 
 
 def test_otel_metric_hook_invokes_add_with_attributes() -> None:

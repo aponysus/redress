@@ -71,7 +71,7 @@ from prometheus_client import Counter
 from redress.metrics import prometheus_metric_hook
 
 counter = Counter("redress_events", "Retry events", ["event", "class", "operation", "err"])
-hook = prometheus_metric_hook(counter)
+hook = prometheus_metric_hook(counter, label_names=("event", "class", "operation", "err"))
 policy.call(work, on_metric=hook, operation="sync_user")
 ```
 

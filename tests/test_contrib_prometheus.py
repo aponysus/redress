@@ -24,6 +24,8 @@ class _FakeCounter:
         self.calls: list[dict[str, object]] = []
 
     def labels(self, **labels: object) -> _FakeCounterChild:
+        if set(labels) != {"event", "class", "operation"}:
+            raise ValueError("Incorrect label names")
         return _FakeCounterChild(self.calls, dict(labels))
 
 
@@ -32,22 +34,39 @@ class _FakeHistogram:
         self.calls: list[dict[str, object]] = []
 
     def labels(self, **labels: object) -> _FakeHistogramChild:
+        if set(labels) != {"class", "operation"}:
+            raise ValueError("Incorrect label names")
         return _FakeHistogramChild(self.calls, dict(labels))
 
 
 def test_prometheus_hooks_emit_counter_and_retry_histogram() -> None:
     counter = _FakeCounter()
     histogram = _FakeHistogram()
-    hooks = prometheus.prometheus_hooks(events=counter, retry_sleep_seconds=histogram)
+    hooks = prometheus.prometheus_hooks(
+        events=counter,
+        retry_sleep_seconds=histogram,
+        event_labels=("event", "class", "operation"),
+        retry_sleep_labels=("class", "operation"),
+    )
     on_metric = hooks["on_metric"]
 
-    on_metric("retry", 1, 0.5, {"class": "RATE_LIMIT", "operation": "fetch"})
-    on_metric("success", 2, 0.0, {"class": "RATE_LIMIT", "operation": "fetch"})
+    on_metric(
+        "retry",
+        1,
+        0.5,
+        {
+            "class": "RATE_LIMIT",
+            "operation": "fetch",
+            "cause": "exception",
+            "err": "RateLimitError",
+        },
+    )
+    on_metric("success", 2, 0.0, {"operation": "fetch"})
 
     assert counter.calls == [
         {"labels": {"event": "retry", "class": "RATE_LIMIT", "operation": "fetch"}, "amount": 1.0},
         {
-            "labels": {"event": "success", "class": "RATE_LIMIT", "operation": "fetch"},
+            "labels": {"event": "success", "class": "", "operation": "fetch"},
             "amount": 1.0,
         },
     ]

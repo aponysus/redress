@@ -71,7 +71,12 @@ policy.call(
 )
 ```
 
-Counter should expose `.labels(event=..., **tags).inc()`.
+The helper uses the labels declared on the Prometheus counter, ignoring extra
+tags. Existing counters labeled only by `event`, or by `event` and `operation`,
+continue to work without configuration changes. Missing or `None` values become
+empty strings: a counter that also declares `class` records success with
+`class=""`. Other values are converted to strings. You can also pass `label_names`
+explicitly, matching the labels declared on the counter.
 
 ## Prometheus contrib hook
 
@@ -100,6 +105,36 @@ policy.call(lambda: do_work(), **hooks, operation="sync_user")
 
 `prometheus_hooks` increments an event counter for every lifecycle event and,
 when a histogram is provided, observes retry sleep durations for `retry` events.
+With label configuration omitted, each metric's declared schema determines its
+labels. The example above uses:
+
+| Metric | Example labels | Optional configuration argument |
+| --- | --- | --- |
+| Event counter | `event`, `class`, `operation` | `event_labels` |
+| Retry-delay histogram | `class`, `operation` | `retry_sleep_labels` |
+
+Each metric receives only its declared or explicitly configured labels. Missing
+or `None` values become empty strings, and other values are converted to strings.
+The `event` label, if selected, always comes from the event argument. Tags such as
+`cause`, `err`, `stop_reason`, and `state` are ignored unless included in that
+metric's schema. The label schema stays fixed across retry, success, exhaustion,
+abort, and breaker events.
+
+For wrappers that do not expose Prometheus label metadata, both helpers preserve
+the previous behavior of forwarding all event tags. To select a fixed schema for
+such a wrapper, pass `label_names` to `prometheus_metric_hook`, or `event_labels`
+and `retry_sleep_labels` to `prometheus_hooks`. These names must match the wrapped
+metric's declared labels. Use `()` to explicitly select an unlabeled metric.
+Explicit configuration takes precedence over inferred names. Both helpers copy
+the names when created and reject duplicate names or a bare string.
+
+Ordinary metric failures are ignored without affecting workload outcomes. The
+counter and histogram are isolated independently: a counter failure still allows
+the retry-delay observation. Cancellation and process-exit exceptions propagate.
+
+The [runnable example](snippets/prometheus_contrib.py) uses an isolated registry
+and prints samples for one retry followed by success. Run it from the checkout
+with `uv run --extra prometheus python docs/snippets/prometheus_contrib.py`.
 
 ## Datadog contrib hook
 
@@ -224,7 +259,7 @@ from redress.metrics import prometheus_metric_hook
 from redress import retry
 
 counter = Counter("redress_events", "Retry events", ["event", "class", "operation", "err"])
-metric_hook = prometheus_metric_hook(counter)
+metric_hook = prometheus_metric_hook(counter, label_names=("event", "class", "operation", "err"))
 start_http_server(8000)
 
 @retry(on_metric=metric_hook, operation="sync_user")

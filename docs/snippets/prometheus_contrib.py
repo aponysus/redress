@@ -2,41 +2,48 @@
 Prometheus contrib hook example.
 
 Run with:
-    uv pip install "redress[prometheus]"
-    uv run python docs/snippets/prometheus_contrib.py
+    uv run --extra prometheus python docs/snippets/prometheus_contrib.py
 """
 
-from prometheus_client import Counter, Histogram
+from prometheus_client import CollectorRegistry, Counter, Histogram, generate_latest
 
-from redress import RetryPolicy, default_classifier
+from redress import Policy, Retry, default_classifier
 from redress.contrib.prometheus import prometheus_hooks
-from redress.strategies import decorrelated_jitter
 
+registry = CollectorRegistry()
 event_counter = Counter(
     "redress_events_total",
     "redress retry lifecycle events",
     ["event", "class", "operation"],
+    registry=registry,
 )
 retry_sleep = Histogram(
     "redress_retry_sleep_seconds",
     "scheduled retry delays",
     ["class", "operation"],
+    registry=registry,
 )
 
-policy = RetryPolicy(
-    classifier=default_classifier,
-    strategy=decorrelated_jitter(max_s=1.0),
-    max_attempts=3,
+policy = Policy(
+    retry=Retry(
+        classifier=default_classifier,
+        strategy=lambda ctx: 0.25,
+        max_attempts=2,
+        sleeper=lambda _: None,  # Skip waiting in this demonstration.
+    )
 )
 
 hooks = prometheus_hooks(events=event_counter, retry_sleep_seconds=retry_sleep)
+attempts = 0
 
 
 def flaky() -> str:
-    raise ConnectionError("boom")
+    global attempts
+    attempts += 1
+    if attempts == 1:
+        raise ConnectionError("temporarily unavailable")
+    return "ok"
 
 
-try:
-    policy.call(flaky, **hooks, operation="sync_user")
-except Exception:
-    pass
+result = policy.call(flaky, **hooks, operation="sync_user")
+print(generate_latest(registry).decode())
